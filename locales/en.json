@@ -1,0 +1,51 @@
+{
+  "type": {
+    "name": "DeepSeek Harness",
+    "description": "DeepSeek's agent harness (dsh) and its web UI, installed with npm on a Node.js of its own."
+  },
+  "components": {
+    "core": "DeepSeek Harness",
+    "node": "Node.js"
+  },
+  "parameters": {
+    "version": "dsh version",
+    "versionHelp": "An npm dist-tag (latest, next, alpha) or an exact version such as 0.2.2.",
+    "nodeVersion": "Node.js version",
+    "nodeVersionHelp": "A major version (24), lts, or an exact version such as 24.9.1. dsh needs Node.js 24.9.0 or later."
+  },
+  "settings": {
+    "npmRegistry": "npm registry",
+    "npmRegistryHelp": "The registry installs and the version list use, such as https://registry.npmmirror.com. Empty: https://registry.npmjs.org.",
+    "nodeMirror": "Node.js download mirror",
+    "nodeMirrorHelp": "Where Node.js releases are downloaded from, such as https://registry.npmmirror.com/-/binary/node. Empty: https://nodejs.org/dist."
+  },
+  "issues": {
+    "version": "Use an npm dist-tag (latest, next, alpha) or an exact version such as 0.2.2.",
+    "nodeVersion": "Use a major version (24 or later), lts, or an exact version such as 24.9.1.",
+    "nodeTooOld": "dsh needs Node.js 24.9.0 or later."
+  },
+  "frame": {
+    "installed": "Installed",
+    "requested": "Requested",
+    "node": "Node.js",
+    "notInstalled": "Not installed",
+    "unknown": "Unknown",
+    "distTags": "Dist-tags",
+    "versions": "Versions",
+    "published": "Published",
+    "switch": "Switch",
+    "current": "Current",
+    "showPrereleases": "Show pre-releases",
+    "showAll": "Show all {count}",
+    "nodeVersion": "Node.js version",
+    "nodeVersionHelp": "A major version (24), lts, or an exact version. Applied with the next switch or update.",
+    "apply": "Update with this Node.js",
+    "refresh": "Refresh",
+    "loading": "Loading…",
+    "registry": "Registry",
+    "confirmHint": "Switching reinstalls dsh with npm; Hanafubuki asks you to confirm first.",
+    "started": "The update started; its progress is the instance's.",
+    "unsupported": "This version of Hanafubuki cannot update an instance from this page. Change the version in the instance's Maintenance section.",
+    "running": "Stop the instance before switching versions."
+  }
+}

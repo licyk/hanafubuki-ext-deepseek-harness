@@ -1,0 +1,14 @@
+[
+  {
+    "key": "npmRegistry",
+    "kind": "text",
+    "label": { "kind": "key", "key": "ext.io.github.licyk.deepseek-harness.settings.npmRegistry" },
+    "help": { "kind": "key", "key": "ext.io.github.licyk.deepseek-harness.settings.npmRegistryHelp" }
+  },
+  {
+    "key": "nodeMirror",
+    "kind": "text",
+    "label": { "kind": "key", "key": "ext.io.github.licyk.deepseek-harness.settings.nodeMirror" },
+    "help": { "kind": "key", "key": "ext.io.github.licyk.deepseek-harness.settings.nodeMirrorHelp" }
+  }
+]

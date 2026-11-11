@@ -1,0 +1,48 @@
+# The backend (backend/main.py) plans the install, the update and the `web`
+# server's command; this file holds what is static.
+name = "dsh"
+provider = "backend"
+displayName = { key = "ext.io.github.licyk.deepseek-harness.type.name" }
+description = { key = "ext.io.github.licyk.deepseek-harness.type.description" }
+preview = "images/preview.png"
+components = [
+  { name = "core", label = { key = "ext.io.github.licyk.deepseek-harness.components.core" } },
+  { name = "node", label = { key = "ext.io.github.licyk.deepseek-harness.components.node" } },
+]
+runtime = { kind = "none" }
+
+# Node's own layout: `node.exe` and `npm.cmd` at its root on Windows,
+# `bin/node` and `bin/npm` elsewhere.
+[environment]
+path = ["{component.node}", "{component.node}/bin"]
+vars = { NPM_CONFIG_UPDATE_NOTIFIER = "false" }
+
+[[install.parameters]]
+name = "version"
+kind = "text"
+label = { key = "ext.io.github.licyk.deepseek-harness.parameters.version" }
+help = { key = "ext.io.github.licyk.deepseek-harness.parameters.versionHelp" }
+default = "latest"
+
+[[install.parameters]]
+name = "nodeVersion"
+kind = "text"
+label = { key = "ext.io.github.licyk.deepseek-harness.parameters.nodeVersion" }
+help = { key = "ext.io.github.licyk.deepseek-harness.parameters.nodeVersionHelp" }
+default = "24"
+advanced = true
+
+[management]
+operations = ["update", "terminal"]
+
+[[servers]]
+role = "web"
+port = { allocate = true }
+readiness = { captured = true, timeoutSeconds = 180 }
+restart = "on-failure"
+webview = true
+
+# What this extension installs: an instance root holding `core` (the npm
+# prefix with dsh) and `node` (the Node.js it downloaded).
+[[discovery]]
+markers = ["core/node_modules/@deepseek-ai/dsh/package.json", "node"]

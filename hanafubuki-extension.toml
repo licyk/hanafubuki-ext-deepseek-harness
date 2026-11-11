@@ -1,0 +1,30 @@
+schema = 1
+id = "io.github.licyk.deepseek-harness"
+name = { en = "DeepSeek Harness", zh = "DeepSeek Harness" }
+version = "0.1.0"
+publisher = "licyk"
+license = "MIT"
+description = { en = "Installs DeepSeek Harness (dsh) on a Node.js of its own, opens its web UI in Hanafubuki, and manages its npm versions.", zh = "在独立的 Node.js 上安装 DeepSeek Harness（dsh），在 Hanafubuki 中打开它的网页界面，并管理它的 npm 版本。" }
+
+[engines]
+hanafubuki = ">=0.3.28, <0.4"
+api = 1
+
+# The backend plans each install and start; the launcher it plans runs on
+# the same managed Python, through `{host.python}`.
+[backend]
+python = "backend/main.py"
+sdWebuiAllInOne = true
+
+[permissions]
+instances = "own-types"        # instances.ofType: an instance's directory, for updates and the version page
+filesystem = "own-instances"
+network = ["nodejs.org", "registry.npmjs.org", "registry.npmmirror.com", "npmmirror.com"]   # download.fetch
+
+[contributes]
+instanceTypes = "types/*.toml"
+settings = "schemas/settings.json"
+locales = "locales/{locale}.json"
+ui = [
+  { slot = "management.sections", kind = "frame", entry = "ui/versions/index.html", id = "versions", title = { en = "DeepSeek Harness versions", zh = "DeepSeek Harness 版本" } },
+]
