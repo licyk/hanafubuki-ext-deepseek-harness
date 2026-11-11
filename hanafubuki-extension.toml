@@ -19,7 +19,7 @@ sdWebuiAllInOne = true
 [permissions]
 instances = "own-types"        # instances.ofType: an instance's directory, for updates and the version page
 filesystem = "own-instances"
-network = ["nodejs.org", "registry.npmjs.org", "registry.npmmirror.com", "npmmirror.com"]   # download.fetch
+network = ["nodejs.org", "registry.npmjs.org", "registry.npmmirror.com", "npmmirror.com", "cdn.npmmirror.com"]   # download.fetch: release index, SHASUMS, registry documents
 
 [contributes]
 instanceTypes = "types/*.toml"

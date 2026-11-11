@@ -17,7 +17,7 @@
     "npmRegistry": "npm 源",
     "npmRegistryHelp": "安装和版本列表使用的源，例如 https://registry.npmmirror.com。留空：https://registry.npmjs.org。",
     "nodeMirror": "Node.js 下载镜像",
-    "nodeMirrorHelp": "下载 Node.js 发行版的地址，例如 https://registry.npmmirror.com/-/binary/node。留空：https://nodejs.org/dist。"
+    "nodeMirrorHelp": "下载 Node.js 发行版的地址，例如 https://cdn.npmmirror.com/binaries/node。留空：https://nodejs.org/dist。"
   },
   "issues": {
     "version": "请使用 npm 发布标签（latest、next、alpha）或确切版本，例如 0.2.2。",

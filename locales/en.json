@@ -17,7 +17,7 @@
     "npmRegistry": "npm registry",
     "npmRegistryHelp": "The registry installs and the version list use, such as https://registry.npmmirror.com. Empty: https://registry.npmjs.org.",
     "nodeMirror": "Node.js download mirror",
-    "nodeMirrorHelp": "Where Node.js releases are downloaded from, such as https://registry.npmmirror.com/-/binary/node. Empty: https://nodejs.org/dist."
+    "nodeMirrorHelp": "Where Node.js releases are downloaded from, such as https://cdn.npmmirror.com/binaries/node. Empty: https://nodejs.org/dist."
   },
   "issues": {
     "version": "Use an npm dist-tag (latest, next, alpha) or an exact version such as 0.2.2.",

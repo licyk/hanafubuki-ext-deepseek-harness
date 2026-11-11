@@ -43,7 +43,7 @@ Id `io.github.licyk.deepseek-harness`; it adds the instance type
   `node` component and is not recognized.
 - **Settings**: *npm registry* (for example `https://registry.npmmirror.com`)
   for installs and the version list, and *Node.js download mirror* (for
-  example `https://registry.npmmirror.com/-/binary/node`). Both are empty by
+  example `https://cdn.npmmirror.com/binaries/node`). Both are empty by
   default: npmjs.org and nodejs.org.
 
 ## Requirements
@@ -109,7 +109,10 @@ and waits for its first `browser.open`.
    under dsh's prefix with `launcher/open-stub.mjs`, which appends the
    http(s) URL to the channel and returns a launcher object that has already
    exited. No browser starts. Other targets, and `open` outside dsh's prefix
-   (a project's own, in a tool dsh runs), reach the real package.
+   (a project's own, in a tool dsh runs), reach the real package. Every Node
+   program dsh runs inherits `NODE_OPTIONS`: one older than 22.15 (a
+   project's pinned Node) loads the hook and is left alone, but one older
+   than 18.19 does not take `--import` there and refuses to start.
 5. The launcher reports each URL with `emit_event("browser.open", {"url": url})`.
    Hanafubuki marks the role ready and opens that URL, token included, in
    the WebView.
@@ -140,7 +143,7 @@ prints where its page is.
 | `hanafubuki-extension.toml` | The manifest. |
 | `types/dsh.toml` | The type: components, environment, parameters, operations, the `web` role, discovery. |
 | `backend/` | The Python backend: `main.py` (the handler), `spec.py` (the parameters), `node_release.py` (the Node.js release), `plans.py` (the steps and the command), `remote.py` (fetching and caching). |
-| `launcher/` | What the host runs: `launch.py`, `intercept.mjs`, `open-stub.mjs`, `remove_tree.py`. |
+| `launcher/` | What the host runs: `launch.py`, `intercept.mjs`, `open-stub.mjs`, `empty_dir.py`. |
 | `ui/versions/` | The built versions page (committed). |
 | `web/` | Its Vue 3 + Vite source; not part of the package. |
 | `locales/`, `schemas/`, `images/` | Strings (en, zh), the Settings form, the type's preview. |
@@ -201,7 +204,7 @@ The archive holds the manifest, `README.md`, `LICENSE`, `types/`,
   则改用 dsh 输出的 `dsh web: <url>` 行。
 - 数据：dsh 自身的数据仍在 `~/.dsh`（不修改 `DSH_HOME`），删除实例不会删除它。
 - 设置：可配置 npm 源（如 `https://registry.npmmirror.com`）和 Node.js 下载镜像
-  （如 `https://registry.npmmirror.com/-/binary/node`）。
+  （如 `https://cdn.npmmirror.com/binaries/node`）。
 - 开发：`web/` 中执行 `npm ci && npm run build` 构建版本页面；以开发链接安装时，
   文件夹内不能有符号链接（`web/.npmrc` 已设置 `bin-links=false`）。
   `python scripts/package.py` 生成安装包。
