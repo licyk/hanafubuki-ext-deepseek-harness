@@ -12,9 +12,10 @@ components = [
 runtime = { kind = "none" }
 
 # Node's own layout: `node.exe` and `npm.cmd` at its root on Windows,
-# `bin/node` and `bin/npm` elsewhere.
+# `bin/node` and `bin/npm` elsewhere. `core` last: in a Windows global
+# prefix (below) Node.js and the global commands are there.
 [environment]
-path = ["{component.node}", "{component.node}/bin"]
+path = ["{component.node}", "{component.node}/bin", "{component.core}"]
 vars = { NPM_CONFIG_UPDATE_NOTIFIER = "false" }
 
 [[install.parameters]]
@@ -46,3 +47,23 @@ webview = true
 # prefix with dsh) and `node` (the Node.js it downloaded).
 [[discovery]]
 markers = ["core/node_modules/@deepseek-ai/dsh/package.json", "node"]
+
+# A Node.js prefix where dsh was installed with `npm install --global`, its
+# Node.js the user's (backend/layout.py). `core` is the prefix itself: the
+# host refuses a component equal to the root unless it is `core`, and only
+# then lets another lie inside it; a forced reinstall cannot remove such a
+# `core` either. `node` is a directory inside the prefix the host asks for;
+# plans address Node.js through `core`. The values are the parameters'
+# defaults: nothing on disk says which dist-tag was installed.
+#
+# Unix: `bin/node`, `lib/node_modules`.
+[[discovery]]
+markers = ["bin/node", "lib/node_modules/@deepseek-ai/dsh/package.json"]
+components = { core = ".", node = "bin" }
+values = { version = "latest", nodeVersion = "24" }
+
+# Windows: `node.exe` and `node_modules` at the prefix's root.
+[[discovery]]
+markers = ["node.exe", "node_modules/@deepseek-ai/dsh/package.json", "node_modules/npm/package.json"]
+components = { core = ".", node = "node_modules/npm" }
+values = { version = "latest", nodeVersion = "24" }

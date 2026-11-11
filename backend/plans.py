@@ -11,17 +11,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from layout import Layout
 from node_release import NodeRelease
 from spec import dsh_version, node_version
 
 PACKAGE = "@deepseek-ai/dsh"
-# Written last by every install and update, so it names what is installed.
+# Written last by every install and update of the extension's own layout, so
+# it names what is installed.
 MARKER = "hanafubuki-install.txt"
-
-NODE_EXE = {"windows": "{component.node}/node.exe"}
-NODE_EXE_DEFAULT = "{component.node}/bin/node"
-NPM_CLI = {"windows": "{component.node}/node_modules/npm/bin/npm-cli.js"}
-NPM_CLI_DEFAULT = "{component.node}/lib/node_modules/npm/bin/npm-cli.js"
 
 
 @dataclass(frozen=True)
@@ -47,36 +44,28 @@ def read_marker(core: Path) -> Marker | None:
     return Marker(fields.get("version", ""), fields.get("nodeVersion", ""), fields.get("node", ""))
 
 
-def node_executable(node_dir: Path, platform: str) -> Path:
-    """The ``node`` program of a Node.js unpacked at ``node_dir``."""
-    return node_dir / "node.exe" if platform == "windows" else node_dir / "bin" / "node"
-
-
-def keeps_node(
-    kind: str, values: dict[str, object], marker: Marker | None, node_dir: Path | None, platform: str
-) -> bool:
-    """Whether an update keeps the instance's Node.js: same ``nodeVersion``, and it is there."""
+def keeps_node(kind: str, values: dict[str, object], marker: Marker | None, node_program: Path) -> bool:
+    """Whether an update keeps the instance's Node.js: same ``nodeVersion``, and its program is there."""
     return (
         kind == "update"
         and marker is not None
-        and node_dir is not None
         and marker.node_version == node_version(values)
-        and node_executable(node_dir, platform).is_file()
+        and node_program.is_file()
     )
 
 
 def install_steps(
-    platform: str,
+    layout: Layout,
     values: dict[str, object],
     node: NodeRelease | None,
     node_text: str,
     clean_node: bool = False,
     registry: str = "",
 ) -> list[dict[str, Any]]:
-    """The plan: Node.js when ``node`` is given (after emptying ``node`` with ``clean_node``), then npm.
+    """The own layout's plan: Node.js when ``node`` is given (emptying ``node`` first with ``clean_node``), then npm.
 
     Args:
-        platform: Hanafubuki's platform name.
+        layout: The instance's layout, the extension's own.
         values: The install parameters' values.
         node: The release to download, or ``None`` to keep the instance's.
         node_text: The Node.js version the instance has once the plan ran.
@@ -105,41 +94,28 @@ def install_steps(
                 "strip": 1,
             }
         )
-    version = dsh_version(values)
-    env = {"npm_config_registry": literal(registry)} if registry else {}
-    steps.append(
-        {
-            "kind": "run",
-            "command": [
-                NODE_EXE.get(platform, NODE_EXE_DEFAULT),
-                NPM_CLI.get(platform, NPM_CLI_DEFAULT),
-                "install",
-                "--prefix",
-                "{component.core}",
-                "--no-fund",
-                "--no-audit",
-                f"{PACKAGE}@{version}",
-            ],
-            # `core` does not exist before the first install; npm creates it.
-            "cwd": "{component.node}",
-            "env": env,
-        }
-    )
-    marker = Marker(version, node_version(values), node_text)
+    # `core` does not exist before the first install; npm creates it.
+    steps.append(_npm_install(layout, [], values, registry, cwd="{component.node}"))
+    marker = Marker(dsh_version(values), node_version(values), node_text)
     steps.append({"kind": "write-file", "path": f"{{component.core}}/{MARKER}", "content": literal(marker.text())})
     return steps
 
 
-def launch_command(platform: str) -> dict[str, Any]:
+def global_install_steps(layout: Layout, values: dict[str, object], registry: str = "") -> list[dict[str, Any]]:
+    """A global prefix's plan: dsh with the prefix's own npm, globally; Node.js and the prefix are left as they are."""
+    return [_npm_install(layout, ["--global"], values, registry, cwd="{component.core}")]
+
+
+def launch_command(layout: Layout) -> dict[str, Any]:
     """The ``web`` role's command: the launcher on the managed Python, which runs dsh."""
     return {
         "argv": [
             "{host.python}",
             "{extension.root}/launcher/launch.py",
             "--core",
-            "{component.core}",
+            layout.dsh_prefix,
             "--node",
-            NODE_EXE.get(platform, NODE_EXE_DEFAULT),
+            layout.node,
             "--port",
             "{port}",
         ],
@@ -150,3 +126,11 @@ def launch_command(platform: str) -> dict[str, Any]:
 def literal(text: str) -> str:
     """``text`` as template text that resolves to itself."""
     return text.replace("{", "{{").replace("}", "}}")
+
+
+def _npm_install(
+    layout: Layout, options: list[str], values: dict[str, object], registry: str, cwd: str
+) -> dict[str, Any]:
+    env = {"npm_config_registry": literal(registry)} if registry else {}
+    command = [layout.node, layout.npm, "install", *options, "--prefix", "{component.core}", "--no-fund", "--no-audit"]
+    return {"kind": "run", "command": [*command, f"{PACKAGE}@{dsh_version(values)}"], "cwd": cwd, "env": env}

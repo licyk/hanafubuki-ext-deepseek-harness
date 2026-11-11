@@ -25,7 +25,8 @@ Id `io.github.licyk.deepseek-harness`; it adds the instance type
   24.9.0 or later).
 - **Update**: runs npm again with the instance's (possibly replaced) values.
   Node.js is downloaded again only when `nodeVersion` changed; the old one is
-  removed first, since an archive unpacks over what is there.
+  removed first, since an archive unpacks over what is there. A discovered
+  global prefix is updated with its own npm only ([Discovery](#discovery)).
 - **Start**: the `web` server role runs `launcher/launch.py` on Hanafubuki's
   managed Python; the instance is ready once dsh asks to open its page, and
   that page (with dsh's `?token=`) opens in the embedded browser
@@ -36,11 +37,9 @@ Id `io.github.licyk.deepseek-harness`; it adds the instance type
   versions* section: the installed dsh and Node.js, the npm dist-tags and
   versions, and **Switch**, which asks Hanafubuki to update the instance
   with that version (Hanafubuki asks you to confirm).
-- **Discovery**: Hanafubuki's discovery recognizes a directory holding
-  `core/node_modules/@deepseek-ai/dsh/package.json` and `node/`, the layout
-  this extension installs, so an instance whose record was lost can be
-  attached again. A dsh installed elsewhere (a global npm install) has no
-  `node` component and is not recognized.
+- **Discovery**: Hanafubuki's discovery attaches what it recognizes
+  ([Discovery](#discovery)): this extension's own layout, and a Node.js
+  where dsh was installed with `npm install --global`.
 - **Settings**: *npm registry* (for example `https://registry.npmmirror.com`)
   for installs and the version list, and *Node.js download mirror* (for
   example `https://cdn.npmmirror.com/binaries/node`). Both are empty by
@@ -129,6 +128,71 @@ and waits for its first `browser.open`.
 Outside Hanafubuki (no broker session) the launcher still runs dsh and
 prints where its page is.
 
+## Discovery
+
+The type declares three `[[discovery]]` signatures (`types/dsh.toml`). The
+scanner tries them in order at each directory it visits; every marker must
+be a regular file or directory reached through no link.
+
+| Signature | Markers (below the directory) | Instance root | `core` | `node` |
+| --- | --- | --- | --- | --- |
+| This extension's layout | `core/node_modules/@deepseek-ai/dsh/package.json`, `node` | the directory | `core` | `node` |
+| A Unix global prefix | `bin/node`, `lib/node_modules/@deepseek-ai/dsh/package.json` | the prefix | the prefix (`.`) | `bin` |
+| A Windows global prefix | `node.exe`, `node_modules/@deepseek-ai/dsh/package.json`, `node_modules/npm/package.json` | the prefix | the prefix (`.`) | `node_modules/npm` |
+
+A global prefix is attached with the install parameters' defaults
+(`version = "latest"`, `nodeVersion = "24"`): a signature is static, so it
+cannot read what is installed. The versions page shows the installed dsh
+and asks that prefix's `node --version`.
+
+Why `core` is the whole prefix rather than `lib` (where Unix keeps
+`node_modules`): Hanafubuki refuses a component that equals or contains
+the instance root unless it is `core`, refuses one component inside
+another unless that one is `core` and `core` is the root, and refuses a
+forced reinstall that would remove a `core` equal to the root. So `node`
+cannot be the prefix itself; it is the prefix's `bin` (Unix) or its
+bundled npm's directory (Windows, where `node.exe` sits at the prefix's
+root and no directory below holds it). The backend reads which layout an
+instance has from its root (the host tells a backend an instance's root
+only) and addresses the prefix's Node.js through `core`:
+`{component.core}/bin/node` with dsh in `{component.core}/lib`, or
+`{component.core}/node.exe` with dsh in `{component.core}`. The type's
+`PATH` ends with `{component.core}`, which puts a Windows prefix's
+`node.exe` and global commands on it.
+
+For a global prefix:
+
+- **Update** (and **Switch**) runs the prefix's own npm,
+  `node <npm-cli.js> install --global --prefix <prefix> @deepseek-ai/dsh@<version>`.
+  Nothing else is planned: no Node.js is downloaded, replaced or emptied,
+  whatever `nodeVersion` says, and no `hanafubuki-install.txt` is written
+  into the prefix. The versions page hides its Node.js control.
+- `empty_dir.py`, the step that empties `node` before another Node.js
+  unpacks, refuses (and fails the update) on a directory whose
+  `node_modules` or `lib/node_modules` holds anything besides npm and
+  corepack, so even an instance whose `node` was pointed at a Node.js of
+  yours by hand keeps it.
+- A forced reinstall is refused by Hanafubuki (its `core` is the root).
+- **Deleting the instance with its files deletes the prefix**, Node.js and
+  every global package in it, as Hanafubuki deletes any instance's root.
+  Use **Delete record only** to stop managing it.
+- dsh's `open` is intercepted under the prefix: an http(s) page that
+  another global package in it opens while dsh runs it is shown in
+  Hanafubuki too.
+
+What is not discovered:
+
+- A `bin/node` or `node.exe` that is a link (Homebrew's `bin/node`, an
+  nvm-windows or fnm "current" link), or a dsh installed with `npm link`.
+- dsh installed with a global prefix away from its Node.js: Windows'
+  installer puts Node.js in `Program Files\nodejs` and npm's global prefix
+  in `%APPDATA%\npm`; Volta keeps packages apart from its Node.js. Prefixes
+  where both are together are found, such as an unpacked Node.js archive,
+  `~/.nvm/versions/node/<version>`, fnm's
+  `node-versions/<version>/installation` and nvm-windows' `<version>` folder.
+- A directory below one already recognized, and the filesystem's root as
+  an instance root.
+
 ## Data
 
 - The instance's directory: `core/` (dsh and its npm dependencies,
@@ -165,7 +229,7 @@ intercept and launcher tests need `node` (24.9 or later) on `PATH`.
 python -m pytest                       # or: python -m unittest discover -s tests -t .
 HFX_NETWORK_TESTS=1 python -m pytest tests/test_network.py   # nodejs.org and npm, live
 python -m ruff check . && python -m ruff format --check .
-python -m ty check --extra-search-path <sdk> --extra-search-path <launcher code> \
+python -m ty check --extra-search-path . --extra-search-path <sdk> --extra-search-path <launcher code> \
   --extra-search-path <launcher code>/sd_webui_all_in_one/patcher backend launcher scripts tests
 ```
 
@@ -209,6 +273,11 @@ The archive holds the manifest, `README.md`, `LICENSE`, `types/`,
   token 的地址通过 `sd_webui_all_in_one` 的 broker 客户端上报为
   `browser.open`，由 Hanafubuki 在内置浏览器中打开；若 5 秒内没有拦截到，
   则改用 dsh 输出的 `dsh web: <url>` 行。
+- 发现：除本扩展的目录结构外，还能识别用 `npm install --global` 安装了 dsh 的
+  Node.js 前缀（Unix：`bin/node` 与 `lib/node_modules/@deepseek-ai/dsh`；Windows：
+  `node.exe`、`node_modules/@deepseek-ai/dsh` 与 `node_modules/npm`），`core` 为该前缀，
+  参数取默认值。对这类实例，更新只用该前缀自带的 npm 执行 `npm install --global`，
+  从不下载、替换或清空其中的 Node.js；带文件删除该实例会删除整个前缀，请使用「仅删除记录」。
 - 数据：dsh 自身的数据仍在 `~/.dsh`（不修改 `DSH_HOME`），删除实例不会删除它。
 - 设置：可配置 npm 源（如 `https://registry.npmmirror.com`）和 Node.js 下载镜像
   （如 `https://cdn.npmmirror.com/binaries/node`）。

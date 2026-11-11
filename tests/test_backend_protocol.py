@@ -195,11 +195,71 @@ class BackendProtocolTest(unittest.TestCase):
         self.assertEqual(status["installed"], "0.2.2-rc.1")
         self.assertEqual(status["node"], "24.11.0")
         self.assertEqual(status["requested"], {"version": "next", "nodeVersion": "24"})
+        self.assertTrue(status["nodeManaged"])
         self.assertEqual(status["locale"], "zh")
         self.assertEqual(status["strings"]["zh"]["switch"], "切换")
         self.assertEqual(set(status["strings"]["en"]), set(status["strings"]["zh"]))
         missing = self.host.request("ui.frame.call", {**params, "context": {"instanceId": "other"}})
         self.assertEqual(missing["error"]["code"], -32003)
+
+
+@needs_sdk
+@unittest.skipIf(sys.platform == "win32", "the prefix's node is a shell script")
+class GlobalPrefixTest(unittest.TestCase):
+    """An instance discovery attached from a Unix Node.js prefix where dsh was installed with ``npm -g``."""
+
+    def setUp(self) -> None:
+        self.directory = Path(tempfile.mkdtemp())
+        self.prefix = self.directory / "nodejs"
+        node = self.prefix / "bin" / "node"
+        node.parent.mkdir(parents=True)
+        node.write_text("#!/bin/sh\necho v24.11.0\n")
+        node.chmod(0o755)
+        package = self.prefix / "lib" / "node_modules" / "@deepseek-ai" / "dsh"
+        package.mkdir(parents=True)
+        (package / "package.json").write_text(json.dumps({"name": "@deepseek-ai/dsh", "version": "0.2.1"}))
+        self.host = FakeHost(self.directory / "data", self.prefix)
+
+    def tearDown(self) -> None:
+        if self.host.process.poll() is None:
+            self.host.process.kill()
+            self.host.process.wait()
+        shutil.rmtree(self.directory, ignore_errors=True)
+
+    def test_update_runs_the_prefix_npm_globally_and_leaves_node(self) -> None:
+        for kind in ("update", "install"):
+            for node_version in ("24", "26"):
+                params = {
+                    "type": TYPE_ID,
+                    "kind": kind,
+                    "values": {"version": "0.2.2", "nodeVersion": node_version},
+                    "instance": {"id": "dsh-1"},
+                }
+                [step] = self.host.request("provider.installPlan", params)["result"]["steps"]
+                self.assertEqual(
+                    step["command"][:4],
+                    [
+                        "{component.core}/bin/node",
+                        "{component.core}/lib/node_modules/npm/bin/npm-cli.js",
+                        "install",
+                        "--global",
+                    ],
+                )
+                self.assertEqual(step["command"][-1], "@deepseek-ai/dsh@0.2.2")
+        self.assertEqual(self.host.fetched, [])
+
+    def test_launch_plan_runs_the_prefix_node(self) -> None:
+        params = {"type": TYPE_ID, "role": "web", "port": 4000, "values": {}, "instance": {"id": "dsh-1"}}
+        argv = self.host.request("provider.launchPlan", params)["result"]["argv"]
+        self.assertEqual(argv[2:6], ["--core", "{component.core}/lib", "--node", "{component.core}/bin/node"])
+
+    def test_frame_status(self) -> None:
+        params = {"frame": "versions", "method": "status", "params": None, "context": {"instanceId": "dsh-1"}}
+        status = self.host.request("ui.frame.call", params)["result"]
+        self.assertEqual(status["installed"], "0.2.1")
+        self.assertEqual(status["node"], "24.11.0")
+        self.assertFalse(status["nodeManaged"])
+        self.assertEqual(status["requested"], {"version": None, "nodeVersion": None})
 
 
 if __name__ == "__main__":

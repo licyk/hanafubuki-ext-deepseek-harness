@@ -13,6 +13,7 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
+import layout
 from tests.support import ROOT
 
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -71,7 +72,9 @@ class ManifestTest(unittest.TestCase):
         self.assertEqual(document["provider"], "backend")
         self.assertEqual([component["name"] for component in document["components"]], ["core", "node"])
         self.assertEqual(document["runtime"], {"kind": "none"})
-        self.assertEqual(document["environment"]["path"], ["{component.node}", "{component.node}/bin"])
+        self.assertEqual(
+            document["environment"]["path"], ["{component.node}", "{component.node}/bin", "{component.core}"]
+        )
         self.assertEqual(document["management"]["operations"], ["update", "terminal"])
         self.assertNotIn("steps", document.get("install", {}))
         [server] = document["servers"]
@@ -83,8 +86,51 @@ class ManifestTest(unittest.TestCase):
         self.assertEqual(server["restart"], "on-failure")
         defaults = {parameter["name"]: parameter["default"] for parameter in document["install"]["parameters"]}
         self.assertEqual(defaults, {"version": "latest", "nodeVersion": "24"})
-        [signature] = document["discovery"]
-        self.assertEqual(signature["markers"], ["core/node_modules/@deepseek-ai/dsh/package.json", "node"])
+        own, unix, windows = document["discovery"]
+        self.assertEqual(own["markers"], ["core/node_modules/@deepseek-ai/dsh/package.json", "node"])
+        self.assertEqual(unix["markers"], ["bin/node", "lib/node_modules/@deepseek-ai/dsh/package.json"])
+        self.assertEqual(unix["components"], {"core": ".", "node": "bin"})
+        self.assertEqual(
+            windows["markers"],
+            ["node.exe", "node_modules/@deepseek-ai/dsh/package.json", "node_modules/npm/package.json"],
+        )
+        self.assertEqual(windows["components"], {"core": ".", "node": "node_modules/npm"})
+        for signature in (unix, windows):
+            self.assertEqual(signature["values"], defaults)
+
+    def test_each_signature_is_the_layout_the_backend_reads(self) -> None:
+        # A tree holding just a signature's markers: the host attaches its root with
+        # those components, and the backend's plans for that root name what is there.
+        expected = {0: ("linux", False), 1: ("linux", True), 2: ("windows", True)}
+        for index, signature in enumerate(descriptor()["discovery"]):
+            platform, global_prefix = expected[index]
+            with self.subTest(signature=index), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                for marker in signature["markers"]:
+                    (root / marker).parent.mkdir(parents=True, exist_ok=True)
+                    if marker == "node":  # the own layout's Node.js directory
+                        (root / marker).mkdir()
+                    else:
+                        (root / marker).write_text("{}")
+                components = {"core": "core", "node": "node", **signature.get("components", {})}
+                paths = {name: (root / path).resolve() for name, path in components.items()}
+                for name, path in paths.items():
+                    self.assertTrue(path.is_dir(), name)
+                # The host's rule (InstancePathPolicy::validate_component_layout): only
+                # `core` may be the root, and another lies inside it only then.
+                node, core = paths["node"], paths["core"]
+                self.assertNotEqual(node, root.resolve())
+                self.assertFalse(core.is_relative_to(node))
+                if node.is_relative_to(core):
+                    self.assertEqual(core, root.resolve())
+
+                kind = layout.read(root, platform)
+                self.assertEqual(kind.global_prefix, global_prefix)
+                core_text = str(paths["core"])
+                if global_prefix:
+                    self.assertTrue(Path(kind.node.replace("{component.core}", core_text)).is_file())
+                    dsh = Path(kind.dsh_prefix.replace("{component.core}", core_text)) / layout.PACKAGE_JSON
+                    self.assertTrue(dsh.is_file())
 
     def test_preview_is_a_16_9_png(self) -> None:
         data = (ROOT / descriptor()["preview"]).read_bytes()

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
 
+import layout
 import node_release
 import plans
 import spec
@@ -102,11 +104,14 @@ class NodeReleaseTest(unittest.TestCase):
             node_release.machine_arch("riscv64")
 
 
+LINUX = layout.own("linux")
+
+
 class PlanTest(unittest.TestCase):
     release = node_release.with_digest(node_release.select(INDEX, "24.11.0", "linux", "x64"), SHASUMS)
 
     def test_install_downloads_node_then_runs_npm(self) -> None:
-        steps = plans.install_steps("linux", {"version": "next", "nodeVersion": "24.11.0"}, self.release, "24.11.0")
+        steps = plans.install_steps(LINUX, {"version": "next", "nodeVersion": "24.11.0"}, self.release, "24.11.0")
         self.assertEqual(
             steps[0],
             {
@@ -135,7 +140,7 @@ class PlanTest(unittest.TestCase):
         self.assertEqual(steps[2]["content"], "version=next\nnodeVersion=24.11.0\nnode=24.11.0\n")
 
     def test_windows_runs_npm_from_node_root(self) -> None:
-        steps = plans.install_steps("windows", {}, self.release, "24.11.0")
+        steps = plans.install_steps(layout.own("windows"), {}, self.release, "24.11.0")
         self.assertEqual(
             steps[1]["command"][:2], ["{component.node}/node.exe", "{component.node}/node_modules/npm/bin/npm-cli.js"]
         )
@@ -147,17 +152,21 @@ class PlanTest(unittest.TestCase):
             (node / "bin").mkdir(parents=True)
             (node / "bin" / "node").write_text("")
             marker = plans.Marker("latest", "24", "24.11.0")
-            self.assertTrue(plans.keeps_node("update", {"nodeVersion": "24"}, marker, node, "linux"))
-            self.assertTrue(plans.keeps_node("update", {}, marker, node, "linux"))
-            self.assertFalse(plans.keeps_node("update", {"nodeVersion": "26"}, marker, node, "linux"))
-            self.assertFalse(plans.keeps_node("install", {"nodeVersion": "24"}, marker, node, "linux"))
-            self.assertFalse(plans.keeps_node("update", {"nodeVersion": "24"}, marker, node, "windows"))
-            self.assertFalse(plans.keeps_node("update", {"nodeVersion": "24"}, None, node, "linux"))
+            program = LINUX.path(LINUX.node, Path(directory))
+            self.assertTrue(plans.keeps_node("update", {"nodeVersion": "24"}, marker, program))
+            self.assertTrue(plans.keeps_node("update", {}, marker, program))
+            self.assertFalse(plans.keeps_node("update", {"nodeVersion": "26"}, marker, program))
+            self.assertFalse(plans.keeps_node("install", {"nodeVersion": "24"}, marker, program))
+            windows = layout.own("windows")
+            self.assertFalse(
+                plans.keeps_node("update", {"nodeVersion": "24"}, marker, windows.path(windows.node, Path(directory)))
+            )
+            self.assertFalse(plans.keeps_node("update", {"nodeVersion": "24"}, None, program))
 
-        kept = plans.install_steps("linux", {"version": "0.2.2"}, None, "24.11.0")
+        kept = plans.install_steps(LINUX, {"version": "0.2.2"}, None, "24.11.0")
         self.assertEqual([step["kind"] for step in kept], ["run", "write-file"])
         self.assertIn("node=24.11.0\n", kept[1]["content"])
-        replaced = plans.install_steps("linux", {"nodeVersion": "26"}, self.release, "24.11.0", clean_node=True)
+        replaced = plans.install_steps(LINUX, {"nodeVersion": "26"}, self.release, "24.11.0", clean_node=True)
         self.assertEqual([step["kind"] for step in replaced], ["run", "download", "run", "write-file"])
         self.assertEqual(
             replaced[0]["command"], ["{host.python}", "{extension.root}/launcher/empty_dir.py", "{component.node}"]
@@ -166,9 +175,9 @@ class PlanTest(unittest.TestCase):
         self.assertEqual(replaced[0]["cwd"], "{component.node}")
 
     def test_text_the_backend_did_not_write_stays_literal(self) -> None:
-        steps = plans.install_steps("linux", {}, self.release, "24.11.0", registry="https://mirror.example/{x}")
+        steps = plans.install_steps(LINUX, {}, self.release, "24.11.0", registry="https://mirror.example/{x}")
         self.assertEqual(steps[1]["env"], {"npm_config_registry": "https://mirror.example/{{x}}"})
-        self.assertEqual(plans.install_steps("linux", {}, self.release, "24.11.0")[1]["env"], {})
+        self.assertEqual(plans.install_steps(LINUX, {}, self.release, "24.11.0")[1]["env"], {})
 
     def test_marker_reads_back(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -178,21 +187,87 @@ class PlanTest(unittest.TestCase):
             self.assertEqual(plans.read_marker(core), plans.Marker("next", "lts", "26.13.1"))
 
     def test_launch_command(self) -> None:
-        for platform, node in (("linux", "{component.node}/bin/node"), ("windows", "{component.node}/node.exe")):
-            command = plans.launch_command(platform)
+        cases = (
+            (layout.own("linux"), "{component.core}", "{component.node}/bin/node"),
+            (layout.own("windows"), "{component.core}", "{component.node}/node.exe"),
+            (layout.global_prefix("linux"), "{component.core}/lib", "{component.core}/bin/node"),
+            (layout.global_prefix("windows"), "{component.core}", "{component.core}/node.exe"),
+        )
+        for kind, core, node in cases:
+            command = plans.launch_command(kind)
             self.assertEqual(
                 command["argv"],
                 [
                     "{host.python}",
                     "{extension.root}/launcher/launch.py",
                     "--core",
-                    "{component.core}",
+                    core,
                     "--node",
                     node,
                     "--port",
                     "{port}",
                 ],
             )
+
+    def test_a_global_prefix_runs_its_own_npm_globally_and_nothing_else(self) -> None:
+        for platform, node, npm in (
+            ("linux", "{component.core}/bin/node", "{component.core}/lib/node_modules/npm/bin/npm-cli.js"),
+            ("windows", "{component.core}/node.exe", "{component.core}/node_modules/npm/bin/npm-cli.js"),
+        ):
+            [step] = plans.global_install_steps(layout.global_prefix(platform), {"version": "0.2.2"}, "https://r/")
+            self.assertEqual(
+                step["command"],
+                [
+                    node,
+                    npm,
+                    "install",
+                    "--global",
+                    "--prefix",
+                    "{component.core}",
+                    "--no-fund",
+                    "--no-audit",
+                    "@deepseek-ai/dsh@0.2.2",
+                ],
+            )
+            self.assertEqual(step["cwd"], "{component.core}")
+            self.assertEqual(step["env"], {"npm_config_registry": "https://r/"})
+
+
+class LayoutTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.root = Path(tempfile.mkdtemp())
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def touch(self, *paths: str) -> None:
+        for path in paths:
+            (self.root / path).parent.mkdir(parents=True, exist_ok=True)
+            (self.root / path).write_text("")
+
+    def test_a_unix_global_prefix(self) -> None:
+        self.touch("bin/node", "lib/node_modules/@deepseek-ai/dsh/package.json")
+        found = layout.read(self.root, "linux")
+        self.assertEqual(found, layout.global_prefix("linux"))
+        self.assertEqual(found.path(found.node, self.root), self.root / "bin" / "node")
+        self.assertEqual(found.path(found.dsh_prefix, self.root), self.root / "lib")
+        self.assertEqual(layout.read(self.root, "windows"), layout.own("windows"))
+
+    def test_a_windows_global_prefix(self) -> None:
+        self.touch("node.exe", "node_modules/@deepseek-ai/dsh/package.json")
+        found = layout.read(self.root, "windows")
+        self.assertEqual(found, layout.global_prefix("windows"))
+        self.assertEqual(found.path(found.npm, self.root), self.root / "node_modules/npm/bin/npm-cli.js")
+
+    def test_everything_else_is_the_extension_own(self) -> None:
+        self.assertEqual(layout.read(None, "linux"), layout.own("linux"))
+        self.assertEqual(layout.read(self.root, "linux"), layout.own("linux"))
+        # Node.js without dsh, as the extension's `node` holds it, is no global prefix.
+        self.touch("bin/node", "core/node_modules/@deepseek-ai/dsh/package.json")
+        self.assertEqual(layout.read(self.root, "linux"), layout.own("linux"))
+        found = layout.own("linux")
+        self.assertEqual(found.path(found.node, self.root), self.root / "node" / "bin" / "node")
+        self.assertEqual(found.path("{component.core}", self.root), self.root / "core")
 
 
 class EmptyDirTest(unittest.TestCase):
@@ -201,12 +276,25 @@ class EmptyDirTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory) / "node"
-            (target / "lib").mkdir(parents=True)
-            (target / "lib" / "x").write_text("x")
+            for package in ("npm", "corepack", ".package-lock.json"):
+                (target / "lib" / "node_modules" / package).mkdir(parents=True)
             (target / "CHANGELOG.md").write_text("x")
             self.assertEqual(empty_dir.main([str(target), str(Path(directory) / "missing")]), 0)
             self.assertTrue(target.is_dir())
             self.assertEqual(list(target.iterdir()), [])
+
+    def test_refuses_a_node_with_global_packages(self) -> None:
+        import empty_dir
+
+        for packages in ("lib/node_modules", "node_modules"):
+            with self.subTest(packages=packages), tempfile.TemporaryDirectory() as directory:
+                target = Path(directory) / "nodejs"
+                (target / packages / "npm").mkdir(parents=True)
+                (target / packages / "@deepseek-ai" / "dsh").mkdir(parents=True)
+                (target / "node.exe").write_text("x")
+                self.assertEqual(empty_dir.main([str(target)]), 1)
+                self.assertTrue((target / "node.exe").is_file())
+                self.assertTrue((target / packages / "@deepseek-ai" / "dsh").is_dir())
 
 
 if __name__ == "__main__":

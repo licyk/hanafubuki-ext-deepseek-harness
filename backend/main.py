@@ -16,6 +16,7 @@ from typing import Any
 
 from hanafubuki_extension import INVALID_PARAMS, REQUEST_FAILED, Handler, Host, RpcError, run
 
+import layout
 import node_release
 import plans
 import spec
@@ -46,18 +47,26 @@ class Backend(Handler):
     def install_plan(
         self, host: Host, type_id: str, kind: str, values: dict[str, Any], instance: dict[str, Any]
     ) -> list[dict[str, Any]]:
-        """``provider.installPlan``: Node.js (unless an update keeps it), npm install, the marker."""
+        """``provider.installPlan``: Node.js (unless an update keeps it), npm install, the marker.
+
+        A global prefix's plan is its npm alone: its Node.js is the user's,
+        whatever ``nodeVersion`` says.
+        """
         platform = self._platform_of(host)
         settings = self._settings(host)
         root = self._instance_root(host, str(instance.get("id", "")))
-        marker = plans.read_marker(root / "core") if root is not None else None
-        node_dir = root / "node" if root is not None else None
-        if marker is not None and plans.keeps_node(kind, values, marker, node_dir, platform):
-            return plans.install_steps(platform, values, None, marker.node, registry=settings["npmRegistry"])
+        shape = layout.read(root, platform)
+        if shape.global_prefix:
+            return plans.global_install_steps(shape, values, settings["npmRegistry"])
+        if root is not None:
+            marker = plans.read_marker(shape.path("{component.core}", root))
+            if marker is not None and plans.keeps_node(kind, values, marker, shape.path(shape.node, root)):
+                return plans.install_steps(shape, values, None, marker.node, registry=settings["npmRegistry"])
         release = self._node_release(host, spec.node_version(values), platform, settings["nodeMirror"])
         # A retry or an update finds an earlier Node.js there, maybe another version.
+        node_dir = shape.path("{component.node}", root) if root is not None else None
         clean = node_dir is not None and node_dir.is_dir() and any(node_dir.iterdir())
-        return plans.install_steps(platform, values, release, release.version, clean, settings["npmRegistry"])
+        return plans.install_steps(shape, values, release, release.version, clean, settings["npmRegistry"])
 
     def launch_plan(
         self, host: Host, type_id: str, role: str, port: int, values: dict[str, Any], instance: dict[str, Any]
@@ -65,7 +74,8 @@ class Backend(Handler):
         """``provider.launchPlan``: the launcher on the managed Python for the ``web`` role."""
         if role != "web":
             raise RpcError(INVALID_PARAMS, f"no server role `{role}`")
-        return plans.launch_command(self._platform_of(host))
+        root = self._instance_root(host, str(instance.get("id", "")))
+        return plans.launch_command(layout.read(root, self._platform_of(host)))
 
     def frame_call(self, host: Host, frame: str, method: str, params: Any, context: dict[str, Any]) -> Any:
         """``ui.frame.call`` from the ``versions`` frame: ``status`` and ``versions``."""
@@ -81,14 +91,14 @@ class Backend(Handler):
     def _status(self, host: Host, instance_id: str) -> dict[str, Any]:
         found = self._instance(host, instance_id)
         root = Path(found["path"])
-        marker = plans.read_marker(root / "core")
-        installed = _package_version(root / "core" / "node_modules" / "@deepseek-ai" / "dsh" / "package.json")
+        shape = layout.read(root, self._platform_of(host))
+        marker = None if shape.global_prefix else plans.read_marker(shape.path("{component.core}", root))
         return {
             "instanceId": instance_id,
             "running": bool(found.get("running")),
-            "installed": installed,
-            "node": (marker.node if marker and marker.node else None)
-            or _node_version(root / "node", self._platform_of(host)),
+            "installed": _package_version(shape.path(shape.dsh_prefix, root) / layout.PACKAGE_JSON),
+            "node": (marker.node if marker and marker.node else None) or _node_version(shape.path(shape.node, root)),
+            "nodeManaged": not shape.global_prefix,
             "requested": {
                 "version": marker.version if marker else None,
                 "nodeVersion": marker.node_version if marker else None,
@@ -170,9 +180,8 @@ def _package_version(path: Path) -> str | None:
     return version if isinstance(version, str) else None
 
 
-def _node_version(node_dir: Path, platform: str) -> str | None:
+def _node_version(program: Path) -> str | None:
     # An instance without the marker (attached by discovery): ask its Node.
-    program = plans.node_executable(node_dir, platform)
     if not program.is_file():
         return None
     try:
