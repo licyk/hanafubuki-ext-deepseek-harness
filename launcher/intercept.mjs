@@ -16,14 +16,16 @@
 // Every other Node program dsh runs (tools, MCP servers) loads this too, so
 // it does nothing outside dsh's prefix and without the channel.
 import { appendFileSync } from "node:fs";
-import { registerHooks } from "node:module";
+// A namespace import: a Node without `registerHooks` (before 22.15), which a
+// tool dsh runs may pin, still loads this file and is left alone.
+import * as nodeModule from "node:module";
 import { sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const channel = process.env.HFX_DSH_OPEN_CHANNEL;
 const prefix = process.env.HFX_DSH_PREFIX; // dsh's npm prefix: `core`
 
-if (channel && prefix) {
+if (channel && prefix && typeof nodeModule.registerHooks === "function") {
   const fold = (url) => (process.platform === "win32" ? url.toLowerCase() : url);
   const scope = fold(pathToFileURL(prefix.endsWith(sep) ? prefix : prefix + sep).href);
   const stub = new URL("./open-stub.mjs", import.meta.url).href;
@@ -33,7 +35,7 @@ if (channel && prefix) {
     return folded.startsWith(scope) && /\/node_modules\/open\/[^/]+\.js$/.test(folded);
   };
 
-  registerHooks({
+  nodeModule.registerHooks({
     resolve(specifier, context, nextResolve) {
       const resolved = nextResolve(specifier, context);
       // The stub imports the real package for what it does not intercept.
