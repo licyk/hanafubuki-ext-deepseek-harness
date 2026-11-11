@@ -49,13 +49,14 @@ class Backend(Handler):
         """``provider.installPlan``: Node.js (unless an update keeps it), npm install, the marker."""
         platform = self._platform_of(host)
         settings = self._settings(host)
-        root = self._instance_root(host, str(instance.get("id", ""))) if kind == "update" else None
+        root = self._instance_root(host, str(instance.get("id", "")))
         marker = plans.read_marker(root / "core") if root is not None else None
         node_dir = root / "node" if root is not None else None
         if marker is not None and plans.keeps_node(kind, values, marker, node_dir, platform):
             return plans.install_steps(platform, values, None, marker.node, registry=settings["npmRegistry"])
         release = self._node_release(host, spec.node_version(values), platform, settings["nodeMirror"])
-        clean = kind == "update" and node_dir is not None and node_dir.is_dir()
+        # A retry or an update finds an earlier Node.js there, maybe another version.
+        clean = node_dir is not None and node_dir.is_dir() and any(node_dir.iterdir())
         return plans.install_steps(platform, values, release, release.version, clean, settings["npmRegistry"])
 
     def launch_plan(

@@ -73,14 +73,14 @@ def install_steps(
     clean_node: bool = False,
     registry: str = "",
 ) -> list[dict[str, Any]]:
-    """The plan: Node.js when ``node`` is given (after removing the old one with ``clean_node``), then npm.
+    """The plan: Node.js when ``node`` is given (after emptying ``node`` with ``clean_node``), then npm.
 
     Args:
         platform: Hanafubuki's platform name.
         values: The install parameters' values.
         node: The release to download, or ``None`` to keep the instance's.
         node_text: The Node.js version the instance has once the plan ran.
-        clean_node: Remove ``node`` first: an archive unpacks over what is there.
+        clean_node: Empty ``node`` first: an archive unpacks over what is there.
         registry: The npm registry, empty for npm's default.
 
     Returns:
@@ -92,8 +92,8 @@ def install_steps(
             steps.append(
                 {
                     "kind": "run",
-                    "command": ["{host.python}", "{extension.root}/launcher/remove_tree.py", "{component.node}"],
-                    "cwd": "{component.core}",
+                    "command": ["{host.python}", "{extension.root}/launcher/empty_dir.py", "{component.node}"],
+                    "cwd": "{component.node}",
                 }
             )
         steps.append(

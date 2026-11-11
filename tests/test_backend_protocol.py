@@ -170,6 +170,13 @@ class BackendProtocolTest(unittest.TestCase):
         steps = self.host.request("provider.installPlan", params)["result"]["steps"]
         self.assertEqual([step["kind"] for step in steps], ["run", "download", "run", "write-file"])
 
+    def test_a_retried_install_empties_the_earlier_node(self) -> None:
+        (self.root / "node" / "lib").mkdir(parents=True)
+        params = {"type": TYPE_ID, "kind": "install", "values": {"nodeVersion": "24.11.0"}, "instance": {"id": "dsh-1"}}
+        steps = self.host.request("provider.installPlan", params)["result"]["steps"]
+        self.assertEqual([step["kind"] for step in steps], ["run", "download", "run", "write-file"])
+        self.assertEqual(steps[0]["command"][1], "{extension.root}/launcher/empty_dir.py")
+
     def test_launch_plan(self) -> None:
         params = {"type": TYPE_ID, "role": "web", "port": 4000, "values": {}, "instance": {"id": "dsh-1"}}
         argv = self.host.request("provider.launchPlan", params)["result"]["argv"]

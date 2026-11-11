@@ -73,13 +73,11 @@ class NodeReleaseTest(unittest.TestCase):
             node_release.select(INDEX, "24", "freebsd", "x64")
 
     def test_mirror(self) -> None:
-        release = node_release.select(
-            INDEX, "24.11.0", "windows", "x64", "https://registry.npmmirror.com/-/binary/node/"
-        )
-        self.assertEqual(release.url, "https://registry.npmmirror.com/-/binary/node/v24.11.0/node-v24.11.0-win-x64.zip")
+        release = node_release.select(INDEX, "24.11.0", "windows", "x64", "https://cdn.npmmirror.com/binaries/node/")
+        self.assertEqual(release.url, "https://cdn.npmmirror.com/binaries/node/v24.11.0/node-v24.11.0-win-x64.zip")
         self.assertEqual(
-            node_release.shasums_url(release, "https://registry.npmmirror.com/-/binary/node"),
-            "https://registry.npmmirror.com/-/binary/node/v24.11.0/SHASUMS256.txt",
+            node_release.shasums_url(release, "https://cdn.npmmirror.com/binaries/node"),
+            "https://cdn.npmmirror.com/binaries/node/v24.11.0/SHASUMS256.txt",
         )
 
     def test_digest_from_shasums(self) -> None:
@@ -162,8 +160,10 @@ class PlanTest(unittest.TestCase):
         replaced = plans.install_steps("linux", {"nodeVersion": "26"}, self.release, "24.11.0", clean_node=True)
         self.assertEqual([step["kind"] for step in replaced], ["run", "download", "run", "write-file"])
         self.assertEqual(
-            replaced[0]["command"], ["{host.python}", "{extension.root}/launcher/remove_tree.py", "{component.node}"]
+            replaced[0]["command"], ["{host.python}", "{extension.root}/launcher/empty_dir.py", "{component.node}"]
         )
+        # Windows does not remove a process's working directory: the step empties it.
+        self.assertEqual(replaced[0]["cwd"], "{component.node}")
 
     def test_text_the_backend_did_not_write_stays_literal(self) -> None:
         steps = plans.install_steps("linux", {}, self.release, "24.11.0", registry="https://mirror.example/{x}")
@@ -195,16 +195,18 @@ class PlanTest(unittest.TestCase):
             )
 
 
-class RemoveTreeTest(unittest.TestCase):
-    def test_removes_and_tolerates_missing(self) -> None:
-        import remove_tree
+class EmptyDirTest(unittest.TestCase):
+    def test_empties_and_tolerates_missing(self) -> None:
+        import empty_dir
 
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory) / "node"
             (target / "lib").mkdir(parents=True)
             (target / "lib" / "x").write_text("x")
-            self.assertEqual(remove_tree.main([str(target), str(Path(directory) / "missing")]), 0)
-            self.assertFalse(target.exists())
+            (target / "CHANGELOG.md").write_text("x")
+            self.assertEqual(empty_dir.main([str(target), str(Path(directory) / "missing")]), 0)
+            self.assertTrue(target.is_dir())
+            self.assertEqual(list(target.iterdir()), [])
 
 
 if __name__ == "__main__":
