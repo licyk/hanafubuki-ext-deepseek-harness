@@ -49,7 +49,7 @@ class ManifestTest(unittest.TestCase):
     def test_manifest(self) -> None:
         document = manifest()
         self.assertEqual(document["id"], EXTENSION_ID)
-        self.assertEqual(document["engines"], {"hanafubuki": ">=0.3.28, <0.4", "api": 1})
+        self.assertEqual(document["engines"], {"hanafubuki": ">=0.3.29, <0.4", "api": 1})
         self.assertEqual(document["backend"], {"python": "backend/main.py", "sdWebuiAllInOne": True})
         self.assertTrue((ROOT / document["backend"]["python"]).is_file())
         self.assertEqual(document["permissions"]["instances"], "own-types")

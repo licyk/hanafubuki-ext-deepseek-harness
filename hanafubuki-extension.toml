@@ -7,7 +7,7 @@ license = "MIT"
 description = { en = "Installs DeepSeek Harness (dsh) on a Node.js of its own, opens its web UI in Hanafubuki, and manages its npm versions.", zh = "在独立的 Node.js 上安装 DeepSeek Harness（dsh），在 Hanafubuki 中打开它的网页界面，并管理它的 npm 版本。" }
 
 [engines]
-hanafubuki = ">=0.3.28, <0.4"
+hanafubuki = ">=0.3.29, <0.4"
 api = 1
 
 # The backend plans each install and start; the launcher it plans runs on

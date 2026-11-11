@@ -47,7 +47,7 @@ Id `io.github.licyk.deepseek-harness`; it adds the instance type
 
 ## Requirements
 
-- Hanafubuki 0.3.28 or later (below 0.4) with the extension-validation host
+- Hanafubuki 0.3.29 or later (below 0.4) with the extension-validation host
   features: backend-provided types with `preview`, component labels,
   `[environment]`, the `terminal` operation, `strip`, `{host.python}` and
   `{extension.root}`; `captured` readiness for a declared server role;

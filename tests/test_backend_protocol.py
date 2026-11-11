@@ -71,7 +71,7 @@ class FakeHost:
         method, params = message["method"], message.get("params") or {}
         reply: dict[str, Any] = {"jsonrpc": "2.0", "id": message["id"]}
         if method == "host.info":
-            reply["result"] = {"version": "0.3.28", "protocolVersion": 1, "locale": "zh", "platform": self.platform}
+            reply["result"] = {"version": "0.3.29", "protocolVersion": 1, "locale": "zh", "platform": self.platform}
         elif method == "settings.get":
             reply["result"] = {"values": self.settings}
         elif method == "instances.ofType":
