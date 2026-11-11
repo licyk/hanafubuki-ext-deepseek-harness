@@ -40,6 +40,7 @@
     "nodeVersion": "Node.js 版本",
     "nodeVersionHelp": "主版本号（24）、lts，或确切版本。在下次切换或更新时生效。",
     "apply": "使用此 Node.js 更新",
+    "nodeUnmanaged": "此 DeepSeek Harness 是用 npm --global 安装在你自己的 Node.js 中的。切换版本会使用该 Node.js 的 npm；Hanafubuki 不会更改这个 Node.js 本身。",
     "refresh": "刷新",
     "loading": "加载中…",
     "registry": "源",

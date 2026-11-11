@@ -40,6 +40,7 @@
     "nodeVersion": "Node.js version",
     "nodeVersionHelp": "A major version (24), lts, or an exact version. Applied with the next switch or update.",
     "apply": "Update with this Node.js",
+    "nodeUnmanaged": "This DeepSeek Harness is installed with npm --global in a Node.js of yours. Switching runs that Node's npm; Hanafubuki never changes the Node.js itself.",
     "refresh": "Refresh",
     "loading": "Loading…",
     "registry": "Registry",

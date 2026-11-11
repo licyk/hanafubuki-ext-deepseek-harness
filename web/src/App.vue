@@ -11,6 +11,8 @@ interface Status {
   running: boolean;
   installed: string | null;
   node: string | null;
+  // False for a global npm prefix: its Node.js is the user's.
+  nodeManaged: boolean;
   requested: { version: string | null; nodeVersion: string | null };
   locale: string;
   strings: Record<string, Record<string, string>>;
@@ -170,7 +172,11 @@ onMounted(() => {
       <p class="hint">{{ t("registry") }}: {{ versions.registry }}</p>
     </section>
 
-    <section v-if="status" class="block">
+    <section v-if="status && !status.nodeManaged" class="block">
+      <h2>{{ t("nodeVersion") }}</h2>
+      <p class="hint">{{ t("nodeUnmanaged") }}</p>
+    </section>
+    <section v-else-if="status" class="block">
       <h2>{{ t("nodeVersion") }}</h2>
       <div class="inline">
         <input v-model="nodeVersion" class="input mono" type="text" spellcheck="false" :aria-label="t('nodeVersion')" />
