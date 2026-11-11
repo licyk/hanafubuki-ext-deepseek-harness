@@ -89,11 +89,16 @@ and waits for its first `browser.open`.
 1. `launch.py` starts `sd_webui_all_in_one`'s broker client
    (`DesktopBrokerClient.from_env().start()`), which connects and keeps the
    session's heartbeat for the launcher's life.
-2. It runs `node <core>/node_modules/@deepseek-ai/dsh/lib/bin.js web --host
+2. It runs `node launcher/start-dsh.mjs --core <core> -- web --host
    127.0.0.1 --port <port>` under `sd_webui_all_in_one.process_tree.run_process_tree`,
    so the whole dsh tree ends with the launcher (SIGTERM or SIGHUP, CTRL_BREAK
    on Windows; a watchdog or job object if the launcher dies). dsh's output
-   is the launcher's.
+   is the launcher's. `start-dsh.mjs` reads `bin.dsh` from
+   `<core>/node_modules/@deepseek-ai/dsh/package.json`, sets `process.argv`
+   to that program and the dsh arguments, imports it and calls the `runCli`
+   it exports (dsh's entry runs itself only as the main module); dsh runs in
+   that process, so its exit code is the process's. When dsh is not
+   installed there it says so and exits with 3; when `runCli` fails, with 1.
 3. dsh's environment is the launcher's without its Python and broker
    variables (`PYTHON*`, `SD_WEBUI_ALL_IN_ONE_*`) and without
    `SSH_CONNECTION`/`SSH_TTY` (dsh does not open a browser over SSH; here
@@ -143,7 +148,7 @@ prints where its page is.
 | `hanafubuki-extension.toml` | The manifest. |
 | `types/dsh.toml` | The type: components, environment, parameters, operations, the `web` role, discovery. |
 | `backend/` | The Python backend: `main.py` (the handler), `spec.py` (the parameters), `node_release.py` (the Node.js release), `plans.py` (the steps and the command), `remote.py` (fetching and caching). |
-| `launcher/` | What the host runs: `launch.py`, `intercept.mjs`, `open-stub.mjs`, `empty_dir.py`. |
+| `launcher/` | What the host runs: `launch.py`, `start-dsh.mjs`, `intercept.mjs`, `open-stub.mjs`, `empty_dir.py`. |
 | `ui/versions/` | The built versions page (committed). |
 | `web/` | Its Vue 3 + Vite source; not part of the package. |
 | `locales/`, `schemas/`, `images/` | Strings (en, zh), the Settings form, the type's preview. |
@@ -197,7 +202,9 @@ The archive holds the manifest, `README.md`, `LICENSE`, `types/`,
 - 参数：`version`（默认 `latest`，可填 `next`、`alpha` 或确切版本）与
   `nodeVersion`（默认 `24`，可填主版本号、`lts` 或确切版本；dsh 需要
   Node.js 24.9.0 及以上）。
-- 启动：启动器在 Hanafubuki 的托管 Python 上运行，通过
+- 启动：启动器在 Hanafubuki 的托管 Python 上运行，用 Node 执行
+  `launcher/start-dsh.mjs`（按 dsh 的 `package.json` 中的 `bin.dsh` 找到并启动 dsh，
+  未安装时给出明确错误，并转发 dsh 的退出码），通过
   `NODE_OPTIONS=--import` 加载钩子，拦截 dsh 打开浏览器的 `open` 包，把带
   token 的地址通过 `sd_webui_all_in_one` 的 broker 客户端上报为
   `browser.open`，由 Hanafubuki 在内置浏览器中打开；若 5 秒内没有拦截到，

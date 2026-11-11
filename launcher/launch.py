@@ -3,7 +3,8 @@
 The host starts this on its managed Python (``{host.python}``), with
 ``sd_webui_all_in_one`` importable and a runtime broker session in the
 environment, since the ``web`` role's readiness is ``captured``. It runs
-``node <dsh>/lib/bin.js web`` with ``intercept.mjs`` loaded through
+``node start-dsh.mjs --core <core> -- web …`` (which starts dsh's own
+program in that process) with ``intercept.mjs`` loaded through
 ``NODE_OPTIONS``, so the browser dsh would open is a line in a channel file
 instead; each http(s) address read there is reported as ``browser.open``,
 which makes the role ready and is the page the WebView shows. dsh's
@@ -29,7 +30,6 @@ from pathlib import Path
 from typing import Any
 
 HERE = Path(__file__).resolve().parent
-DSH_BIN = Path("node_modules") / "@deepseek-ai" / "dsh" / "lib" / "bin.js"
 FALLBACK_SECONDS = 5.0
 POLL_SECONDS = 0.2
 # Variables of the launcher's own Python and of the broker session: none of
@@ -51,7 +51,18 @@ def main(argv: list[str] | None = None) -> int:
     channel.touch()
     watcher = ChannelWatcher(channel, reporter.report)
     watcher.start()
-    command = [str(args.node), str(args.core / DSH_BIN), "web", "--host", args.host, "--port", str(args.port)]
+    command = [
+        str(args.node),
+        str(HERE / "start-dsh.mjs"),
+        "--core",
+        str(args.core),
+        "--",
+        "web",
+        "--host",
+        args.host,
+        "--port",
+        str(args.port),
+    ]
     try:
         return run_process_tree(
             command, custom_env=dsh_environment(os.environ, args.core, channel), cwd=args.core, check=False
@@ -191,7 +202,9 @@ def _broker_client() -> Any:
 
 def _parse(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run dsh's web UI for Hanafubuki.")
-    parser.add_argument("--core", type=Path, required=True, help="dsh's npm prefix (the instance's core)")
+    parser.add_argument(
+        "--core", type=Path, required=True, help="dsh's npm prefix: the directory whose node_modules holds it"
+    )
     parser.add_argument("--node", type=Path, required=True, help="the node program")
     parser.add_argument("--port", type=int, required=True)
     parser.add_argument("--host", default="127.0.0.1")

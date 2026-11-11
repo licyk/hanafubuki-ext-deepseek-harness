@@ -20,7 +20,7 @@ class InterceptTest(unittest.TestCase):
     def setUp(self) -> None:
         self.directory = Path(tempfile.mkdtemp())
         self.prefix = self.directory / "core"
-        self.bin = make_prefix(self.prefix)
+        make_prefix(self.prefix)
         self.channel = self.directory / "channel.jsonl"
         self.channel.touch()
         self.browser = self.directory / "browser.log"
@@ -50,15 +50,28 @@ class InterceptTest(unittest.TestCase):
     def browser_log(self) -> list[str]:
         return self.browser.read_text(encoding="utf-8").splitlines() if self.browser.exists() else []
 
+    def start_dsh(self, prefix: Path, port: int, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+        start = str(ROOT / "launcher" / "start-dsh.mjs")
+        arguments = ("--core", str(prefix), "--", "web", "--host", "127.0.0.1", "--port", str(port))
+        return self.run_node(start, *arguments, cwd=prefix, env={**env, "FAKE_DSH_ONESHOT": "1"})
+
     def test_dsh_opener_is_captured_and_no_browser_opens(self) -> None:
-        result = self.run_node(
-            str(self.bin), "web", "--host", "127.0.0.1", "--port", "4567", env={**self.env, "FAKE_DSH_ONESHOT": "1"}
-        )
+        result = self.start_dsh(self.prefix, 4567, self.env)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("opener exited 0", result.stdout)
         url = "http://127.0.0.1:4567/?token=fake-token-4567"
         kinds = {entry["kind"]: entry["url"] for entry in self.entries()}
         self.assertEqual(kinds, {"printed": url, "open": url})
+        self.assertEqual(self.browser_log(), [])
+
+    def test_a_global_install_nests_open_in_dsh(self) -> None:
+        # `npm install --global` keeps each package's dependencies in its own node_modules.
+        prefix = self.directory / "global" / "lib"
+        make_prefix(prefix, open_under=prefix / "node_modules" / "@deepseek-ai" / "dsh")
+        env = {**launch.dsh_environment(os.environ, prefix, self.channel), "FAKE_BROWSER_LOG": str(self.browser)}
+        result = self.start_dsh(prefix, 4569, env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([entry["kind"] for entry in self.entries()], ["printed", "open"])
         self.assertEqual(self.browser_log(), [])
 
     def test_hook_reaches_the_child_through_the_scrub(self) -> None:
@@ -93,7 +106,7 @@ class InterceptTest(unittest.TestCase):
     def test_without_the_channel_nothing_is_replaced(self) -> None:
         env = {**self.env}
         del env["HFX_DSH_OPEN_CHANNEL"]
-        result = self.run_node(str(self.bin), "web", "--port", "4568", env={**env, "FAKE_DSH_ONESHOT": "1"})
+        result = self.start_dsh(self.prefix, 4568, env)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.browser_log(), ["http://127.0.0.1:4568/?token=fake-token-4568"])
 

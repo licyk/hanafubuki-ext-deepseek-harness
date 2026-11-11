@@ -63,7 +63,7 @@ class ManifestTest(unittest.TestCase):
         for entry in contributes["ui"]:
             self.assertTrue((ROOT / entry["entry"]).is_file(), entry)
         self.assertTrue((ROOT / descriptor()["preview"]).is_file())
-        for script in ("launch.py", "intercept.mjs", "open-stub.mjs", "empty_dir.py"):
+        for script in ("launch.py", "start-dsh.mjs", "intercept.mjs", "open-stub.mjs", "empty_dir.py"):
             self.assertTrue((ROOT / "launcher" / script).is_file(), script)
 
     def test_type(self) -> None:
@@ -154,6 +154,7 @@ class PackageTest(unittest.TestCase):
             "images/preview.png",
             "backend/main.py",
             "launcher/launch.py",
+            "launcher/start-dsh.mjs",
             "launcher/intercept.mjs",
             "launcher/open-stub.mjs",
             "ui/versions/index.html",

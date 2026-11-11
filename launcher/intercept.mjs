@@ -1,5 +1,6 @@
 // Loaded into every Node process of the dsh tree by `NODE_OPTIONS=--import`
-// (launch.py sets it): dsh itself and the opener child it spawns.
+// (launch.py sets it): dsh itself (start-dsh.mjs, which runs dsh's program
+// in its own process) and the opener child dsh spawns.
 //
 // dsh opens its web UI by resolving the npm `open` package in its own
 // process (`import.meta.resolve('open')`) and importing that URL in a child
