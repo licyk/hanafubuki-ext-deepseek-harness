@@ -248,6 +248,17 @@ class GlobalPrefixTest(unittest.TestCase):
                 self.assertEqual(step["command"][-1], "@deepseek-ai/dsh@0.2.2")
         self.assertEqual(self.host.fetched, [])
 
+    def test_without_dsh_the_prefix_node_is_still_left_alone(self) -> None:
+        shutil.rmtree(self.prefix / "lib" / "node_modules" / "@deepseek-ai")
+        for kind in ("update", "install"):
+            params = {"type": TYPE_ID, "kind": kind, "values": {}, "instance": {"id": "dsh-1"}}
+            [step] = self.host.request("provider.installPlan", params)["result"]["steps"]
+            self.assertEqual(step["command"][2:4], ["install", "--global"])
+        self.assertEqual(self.host.fetched, [])
+        params = {"type": TYPE_ID, "role": "web", "port": 4000, "values": {}, "instance": {"id": "dsh-1"}}
+        argv = self.host.request("provider.launchPlan", params)["result"]["argv"]
+        self.assertEqual(argv[2:6], ["--core", "{component.core}/lib", "--node", "{component.core}/bin/node"])
+
     def test_launch_plan_runs_the_prefix_node(self) -> None:
         params = {"type": TYPE_ID, "role": "web", "port": 4000, "values": {}, "instance": {"id": "dsh-1"}}
         argv = self.host.request("provider.launchPlan", params)["result"]["argv"]

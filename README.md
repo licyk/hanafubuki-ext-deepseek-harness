@@ -154,7 +154,10 @@ cannot be the prefix itself; it is the prefix's `bin` (Unix) or its
 bundled npm's directory (Windows, where `node.exe` sits at the prefix's
 root and no directory below holds it). The backend reads which layout an
 instance has from its root (the host tells a backend an instance's root
-only) and addresses the prefix's Node.js through `core`:
+only): a node program at the root (`bin/node`, `node.exe`) makes it a
+global prefix, with or without dsh, so a prefix whose dsh was uninstalled
+is still never given a Node.js. It addresses the prefix's Node.js through
+`core`:
 `{component.core}/bin/node` with dsh in `{component.core}/lib`, or
 `{component.core}/node.exe` with dsh in `{component.core}`. The type's
 `PATH` ends with `{component.core}`, which puts a Windows prefix's
@@ -184,12 +187,13 @@ What is not discovered:
 
 - A `bin/node` or `node.exe` that is a link (Homebrew's `bin/node`, an
   nvm-windows or fnm "current" link), or a dsh installed with `npm link`.
-- dsh installed with a global prefix away from its Node.js: Windows'
-  installer puts Node.js in `Program Files\nodejs` and npm's global prefix
-  in `%APPDATA%\npm`; Volta keeps packages apart from its Node.js. Prefixes
-  where both are together are found, such as an unpacked Node.js archive,
-  `~/.nvm/versions/node/<version>`, fnm's
-  `node-versions/<version>/installation` and nvm-windows' `<version>` folder.
+- dsh installed with a global prefix away from its Node.js, as npm's
+  default on Windows (`%APPDATA%\npm`, while the installer puts Node.js in
+  `Program Files\nodejs`) or a version manager that keeps packages apart.
+  A prefix holding both is found: an unpacked Node.js archive (checked on
+  Linux) and, by their usual layouts, version managers' per-version folders
+  such as nvm's `~/.nvm/versions/node/<version>` (not checked here, nor on
+  Windows or macOS).
 - A directory below one already recognized, and the filesystem's root as
   an instance root.
 

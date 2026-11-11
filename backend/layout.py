@@ -64,12 +64,15 @@ def global_prefix(platform: str) -> Layout:
 
 
 def read(root: Path | None, platform: str) -> Layout:
-    """The layout of the instance at ``root``: a global prefix when its node and dsh are there, else its own."""
+    """The layout of the instance at ``root``: a global prefix when its node program is there, else its own.
+
+    The node program alone decides, with or without dsh: a prefix whose dsh
+    was uninstalled, or whose global install stopped half-way, is still the
+    user's Node.js. The extension's own layout keeps it in ``node``, never
+    at the root.
+    """
     if root is not None:
         candidate = global_prefix(platform)
-        if (
-            candidate.path(candidate.node, root).is_file()
-            and (candidate.path(candidate.dsh_prefix, root) / PACKAGE_JSON).is_file()
-        ):
+        if candidate.path(candidate.node, root).is_file():
             return candidate
     return own(platform)

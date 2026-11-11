@@ -259,12 +259,18 @@ class LayoutTest(unittest.TestCase):
         self.assertEqual(found, layout.global_prefix("windows"))
         self.assertEqual(found.path(found.npm, self.root), self.root / "node_modules/npm/bin/npm-cli.js")
 
+    def test_a_global_prefix_without_dsh_is_still_one(self) -> None:
+        # dsh uninstalled, or a global install that stopped: the Node.js is still the user's.
+        self.touch("bin/node", "node.exe")
+        self.assertEqual(layout.read(self.root, "linux"), layout.global_prefix("linux"))
+        self.assertEqual(layout.read(self.root, "windows"), layout.global_prefix("windows"))
+
     def test_everything_else_is_the_extension_own(self) -> None:
         self.assertEqual(layout.read(None, "linux"), layout.own("linux"))
         self.assertEqual(layout.read(self.root, "linux"), layout.own("linux"))
-        # Node.js without dsh, as the extension's `node` holds it, is no global prefix.
-        self.touch("bin/node", "core/node_modules/@deepseek-ai/dsh/package.json")
+        self.touch("node/bin/node", "node/node.exe", "core/node_modules/@deepseek-ai/dsh/package.json")
         self.assertEqual(layout.read(self.root, "linux"), layout.own("linux"))
+        self.assertEqual(layout.read(self.root, "windows"), layout.own("windows"))
         found = layout.own("linux")
         self.assertEqual(found.path(found.node, self.root), self.root / "node" / "bin" / "node")
         self.assertEqual(found.path("{component.core}", self.root), self.root / "core")
