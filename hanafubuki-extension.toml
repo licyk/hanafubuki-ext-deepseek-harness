@@ -8,8 +8,9 @@ description = { en = "Installs DeepSeek Harness (dsh) on a Node.js of its own or
 
 [engines]
 # 0.3.30: external components, `[environment] unset`, `{instance.root}`,
-# the replacing unpack and the component map in provider calls.
-hanafubuki = ">=0.3.30, <0.4"
+# the replacing unpack and the component map in provider calls; 0.3.31:
+# the component map of each instance `instances.ofType` lists.
+hanafubuki = ">=0.3.31, <0.4"
 api = 1
 
 # The backend plans each install and start; the launcher it plans runs on
@@ -19,7 +20,7 @@ python = "backend/main.py"
 sdWebuiAllInOne = true
 
 [permissions]
-instances = "own-types"        # instances.ofType: an instance's directory, for updates and the version page
+instances = "own-types"        # instances.ofType: an instance's root and components, for the version page and the copy of ~/.dsh
 filesystem = "own-instances"
 network = ["nodejs.org", "unofficial-builds.nodejs.org", "registry.npmjs.org", "registry.npmmirror.com", "npmmirror.com", "cdn.npmmirror.com"]   # download.fetch: release index (unofficial-builds: musl), SHASUMS, registry documents
 

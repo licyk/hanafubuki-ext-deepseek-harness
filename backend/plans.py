@@ -2,7 +2,7 @@
 
 The host resolves the placeholders (``{component.node}``, ``{host.python}``,
 ``{extension.root}``, ``{port}``), gives each step and the server the
-type's ``[environment]`` (npm's configuration and dsh's homes,
+type's ``[environment]`` (for ``dsh``, npm's configuration and dsh's homes,
 ``types/dsh.toml``) and runs what is planned; text the backend did not
 write itself has its braces doubled so it stays literal.
 """
@@ -105,23 +105,17 @@ def npmrc(registry: str) -> str:
     return text + (f"registry={registry}\n" if registry else "")
 
 
-def global_install_steps(layout: Layout, values: dict[str, object], registry: str = "") -> list[dict[str, Any]]:
+def global_install_steps(layout: Layout, values: dict[str, object]) -> list[dict[str, Any]]:
     """A global prefix's plan: dsh with the prefix's own npm, globally; Node.js and the prefix are left as they are.
 
-    Nothing is written in the user's prefix: the registry is the step's.
+    Nothing is written in the user's prefix, and npm reads the user's own
+    configuration (the type sets none).
     """
-    env = {"npm_config_registry": literal(registry)} if registry else {}
-    return [_npm_install(layout, ["--global"], values, env, cwd="{component.core}")]
+    return [_npm_install(layout, ["--global"], values, {}, cwd="{component.core}")]
 
 
-def launch_command(layout: Layout, home: str) -> dict[str, Any]:
-    """The ``web`` role's command: the launcher on the managed Python, which runs dsh.
-
-    The type's environment gives dsh the instance's own homes; with
-    ``home = user`` they are emptied here, which dsh reads as unset: its
-    ``~/.dsh`` and ``~/.agents``.
-    """
-    env = {"DSH_HOME": "", "DSH_AGENTS_HOME": ""} if home == "user" else {}
+def launch_command(layout: Layout) -> dict[str, Any]:
+    """The ``web`` role's command: the launcher on the managed Python, which runs dsh."""
     return {
         "argv": [
             "{host.python}",
@@ -133,7 +127,7 @@ def launch_command(layout: Layout, home: str) -> dict[str, Any]:
             "--port",
             "{port}",
         ],
-        "env": env,
+        "env": {},
     }
 
 

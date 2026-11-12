@@ -5,12 +5,13 @@ provider = "backend"
 displayName = { key = "ext.io.github.licyk.deepseek-harness.type.name" }
 description = { key = "ext.io.github.licyk.deepseek-harness.type.description" }
 preview = "images/preview.png"
-# `node` may be a Node.js of the user's (the Paths panel's "use an existing
-# one"): its program is `bin/node` (`node.exe` on Windows), npm beside it,
-# and no plan downloads into it. `core` may be external only as an attached
-# global prefix (below).
+# An instance this extension installs, isolated from the user's npm, Node.js
+# and dsh (a global npm install of the user's is `dsh-global.toml`). `node`
+# may be a Node.js of the user's (the Paths panel's "use an existing one"):
+# its program is `bin/node` (`node.exe` on Windows), npm beside it, and no
+# plan downloads into it.
 components = [
-  { name = "core", label = { key = "ext.io.github.licyk.deepseek-harness.components.core" }, external = "allowed" },
+  { name = "core", label = { key = "ext.io.github.licyk.deepseek-harness.components.core" } },
   { name = "node", label = { key = "ext.io.github.licyk.deepseek-harness.components.node" }, external = "allowed", executable = { unix = "bin/node", windows = "node.exe" } },
 ]
 runtime = { kind = "none" }
@@ -19,14 +20,12 @@ runtime = { kind = "none" }
 # user's npm configuration, Node.js options or module path; npm's user
 # configuration is `core/.npmrc` (the plans write the registry setting
 # there), its global prefix `core` and its cache the instance's; dsh's
-# homes are the instance's (the launch plan empties them for `home = user`,
-# which dsh reads as `~/.dsh` and `~/.agents`).
+# homes are the instance's.
 #
 # PATH: dsh and the other programs of its packages (`node_modules/.bin`),
 # then what `npm install --global` puts in the prefix (`core/bin` on Unix,
-# `core` itself on Windows, where a global prefix also holds Node.js), then
-# Node's own layout: `node.exe` and `npm.cmd` at its root on Windows,
-# `bin/node` and `bin/npm` elsewhere.
+# `core` itself on Windows), then Node's own layout: `node.exe` and
+# `npm.cmd` at its root on Windows, `bin/node` and `bin/npm` elsewhere.
 [environment]
 unset = ["npm_config_*", "NPM_CONFIG_*", "NODE_OPTIONS", "NODE_PATH"]
 path = [
@@ -61,21 +60,6 @@ help = { key = "ext.io.github.licyk.deepseek-harness.parameters.nodeVersionHelp"
 default = "24"
 advanced = true
 
-# `instance`: dsh keeps its profiles, credentials and sessions in the
-# instance (`dsh-home`, `agents-home`); `user`: the user's `~/.dsh` and
-# `~/.agents`, shared with any other dsh.
-[[install.parameters]]
-name = "home"
-kind = "select"
-label = { key = "ext.io.github.licyk.deepseek-harness.parameters.home" }
-help = { key = "ext.io.github.licyk.deepseek-harness.parameters.homeHelp" }
-default = "instance"
-advanced = true
-options = [
-  { value = "instance", label = { key = "ext.io.github.licyk.deepseek-harness.homes.instance" } },
-  { value = "user", label = { key = "ext.io.github.licyk.deepseek-harness.homes.user" } },
-]
-
 [management]
 # `copy-user-home`: copies `~/.dsh` and `~/.agents` into the instance's homes.
 operations = ["update", "terminal", "copy-user-home"]
@@ -91,27 +75,3 @@ webview = true
 # prefix with dsh) and `node` (the Node.js it downloaded).
 [[discovery]]
 markers = ["core/node_modules/@deepseek-ai/dsh/package.json", "node"]
-
-# A Node.js prefix where dsh was installed with `npm install --global`, its
-# Node.js the user's (backend/layout.py). `core` is the prefix itself: the
-# host refuses a component equal to the root unless it is `core`, and only
-# then lets another lie inside it. Both are external, so deleting the
-# instance or reinstalling it never removes the user's Node.js. `node`
-# cannot be the prefix (it would equal `core`), so it is a directory inside
-# it and plans address Node.js through `core`. The values are the
-# parameters' defaults (nothing on disk says which dist-tag was
-# installed), with dsh's home the user's, as the prefix's own dsh has it.
-#
-# Unix: `bin/node`, `lib/node_modules`.
-[[discovery]]
-markers = ["bin/node", "lib/node_modules/@deepseek-ai/dsh/package.json"]
-components = { core = ".", node = "bin" }
-external = ["core", "node"]
-values = { version = "latest", nodeVersion = "24", home = "user" }
-
-# Windows: `node.exe` and `node_modules` at the prefix's root.
-[[discovery]]
-markers = ["node.exe", "node_modules/@deepseek-ai/dsh/package.json", "node_modules/npm/package.json"]
-components = { core = ".", node = "node_modules/npm" }
-external = ["core", "node"]
-values = { version = "latest", nodeVersion = "24", home = "user" }

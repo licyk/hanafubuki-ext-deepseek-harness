@@ -1,9 +1,11 @@
 """The DeepSeek Harness extension's backend.
 
-It provides the type ``io.github.licyk.deepseek-harness:dsh``: it checks an
-instance's values (and a Node.js of the user's), plans its install and
-update (Node.js, then dsh with npm) and its ``web`` server's command, runs
-its ``copy-user-home`` operation, and answers the version page's calls.
+It provides two types: ``io.github.licyk.deepseek-harness:dsh``, which it
+installs isolated (it checks an instance's values and a Node.js of the
+user's, plans its install and update, Node.js then dsh with npm, and runs
+its ``copy-user-home`` operation), and ``...:dsh-global``, a global npm
+install of the user's, attached by discovery and updated with its own npm.
+It plans both types' ``web`` server and answers the version page's calls.
 """
 
 from __future__ import annotations
@@ -23,11 +25,12 @@ import layout
 import node_release
 import plans
 import spec
-from known import KnownInstances
-from layout import Components
+from copied import HomeCopies
+from layout import Components, Layout
 from remote import Remote
 
 TYPE_ID = "io.github.licyk.deepseek-harness:dsh"
+GLOBAL_TYPE_ID = f"io.github.licyk.deepseek-harness:{layout.GLOBAL_TYPE}"
 PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_REGISTRY = "https://registry.npmjs.org"
 INDEX_MAX_AGE = 3600.0
@@ -41,7 +44,7 @@ class Backend(Handler):
     def __init__(self) -> None:
         """Builds the backend; what it learns from the host is read when first needed."""
         self._platform: str | None = None
-        self._known: KnownInstances | None = None
+        self._copies: HomeCopies | None = None
         self._copying: set[str] = set()
         self._lock = threading.Lock()
 
@@ -57,8 +60,7 @@ class Backend(Handler):
         issues = texts.get("issues", {})
         found = {name: issues.get(issue, issue) for name, issue in spec.issues(values).items()}
         parts = layout.components(instance)
-        if instance is not None and parts is not None and "nodeVersion" not in found:
-            self._known_instances(host).remember(str(instance.get("id", "")), parts, None)
+        if type_id == TYPE_ID and parts is not None and "nodeVersion" not in found:
             problem = own_node_problem(parts, self._platform_of(host), texts)
             if problem:
                 found["nodeVersion"] = problem
@@ -69,16 +71,18 @@ class Backend(Handler):
     ) -> list[dict[str, Any]]:
         """``provider.installPlan``: Node.js (unless an update keeps it, or it is the user's), npm, the marker.
 
-        A global prefix's plan is its npm alone, and an external ``node``
-        is never downloaded into: either Node.js is the user's, whatever
-        ``nodeVersion`` says.
+        A ``dsh-global`` instance is attached, never installed: its plan is
+        an update with the prefix's own npm alone, whatever else it says. An
+        external ``node`` is never downloaded into.
         """
         platform = self._platform_of(host)
+        parts = _components(instance)
+        if type_id == GLOBAL_TYPE_ID:
+            if kind == "install":
+                raise RpcError(REQUEST_FAILED, self._notice(host, "globalNotInstallable"))
+            return plans.global_install_steps(layout.global_prefix(platform), values)
+        shape = self._own_layout(host, parts, platform)
         registry = self._settings(host)["npmRegistry"]
-        parts = self._instance_components(host, instance, values)
-        shape = layout.read(parts, platform)
-        if shape.global_prefix:
-            return plans.global_install_steps(shape, values, registry)
         if parts.node.external:
             if problem := own_node_problem(parts, platform, locale_strings(self._locale(host))):
                 raise RpcError(REQUEST_FAILED, problem)
@@ -105,17 +109,16 @@ class Backend(Handler):
         """``provider.launchPlan``: the launcher on the managed Python for the ``web`` role."""
         if role != "web":
             raise RpcError(INVALID_PARAMS, f"no server role `{role}`")
-        parts = self._instance_components(host, instance, values)
-        return plans.launch_command(layout.read(parts, self._platform_of(host)), spec.home(values))
+        platform = self._platform_of(host)
+        if type_id == GLOBAL_TYPE_ID:
+            return plans.launch_command(layout.global_prefix(platform))
+        return plans.launch_command(self._own_layout(host, _components(instance), platform))
 
     def manage(self, host: Host, type_id: str, operation: str, instance: dict[str, Any]) -> str:
         """``provider.manage.copy-user-home``: copies the user's ``~/.dsh`` into the instance's home."""
-        if operation != COPY_HOME:
+        if operation != COPY_HOME or type_id != TYPE_ID:
             raise RpcError(INVALID_PARAMS, f"no operation `{operation}`")
-        instance_id = str(instance.get("id", ""))
-        if (parts := layout.components(instance)) is not None:
-            self._known_instances(host).remember(instance_id, parts, None)
-        return self._start_copy(host, instance_id)
+        return self._start_copy(host, str(instance.get("id", "")))
 
     def frame_call(self, host: Host, frame: str, method: str, params: Any, context: dict[str, Any]) -> Any:
         """``ui.frame.call`` from the ``versions`` frame: ``status``, ``versions`` and ``copyHome``."""
@@ -134,16 +137,13 @@ class Backend(Handler):
     def _status(self, host: Host, instance_id: str) -> dict[str, Any]:
         found = self._instance(host, instance_id)
         root = Path(found["path"])
-        platform = self._platform_of(host)
-        known = self._known_instances(host)
-        parts = known.components(instance_id) or layout.below_root(root, platform)
-        shape = layout.read(parts, platform)
-        values = known.values(instance_id)
-        source = "prefix" if shape.global_prefix else "own" if parts.node.external else "managed"
-        marker = None if shape.global_prefix else plans.read_marker(parts.core.path)
+        parts = _components(found)
+        isolated = found.get("type") == TYPE_ID
+        shape = layout.for_type(str(found.get("type", "")).rpartition(":")[2], self._platform_of(host))
+        source = "prefix" if not isolated else "own" if parts.node.external else "managed"
+        marker = plans.read_marker(parts.core.path) if isolated else None
         program = shape.path(shape.node, parts)
         node = marker.node if source == "managed" and marker and marker.node else None
-        chosen_home = spec.home(values) if "home" in values else "user" if shape.global_prefix else "instance"
         return {
             "instanceId": instance_id,
             "running": bool(found.get("running")),
@@ -151,10 +151,9 @@ class Backend(Handler):
             "node": node or _node_version(program),
             "nodeSource": source,
             "nodePath": str(program),
-            "prefix": str(parts.core.path) if shape.global_prefix else None,
-            "home": chosen_home,
-            "homePath": str(root / home.DSH_HOME) if chosen_home == "instance" else "~/.dsh",
-            "canCopyHome": chosen_home == "instance" and not known.home_copied(instance_id) and bool(home.copies(root)),
+            "prefix": None if isolated else str(parts.core.path),
+            "homePath": str(root / home.DSH_HOME) if isolated else None,
+            "canCopyHome": isolated and instance_id not in self._home_copies(host) and bool(home.copies(root)),
             "copying": instance_id in self._copying,
             "requested": {
                 "version": marker.version if marker else None,
@@ -182,6 +181,8 @@ class Backend(Handler):
         # past the host's bound for this call, and reports with ui.progress.
         notices = locale_strings(self._locale(host)).get("notices", {})
         found = self._instance(host, instance_id)
+        if found.get("type") != TYPE_ID:
+            raise RpcError(INVALID_PARAMS, notices.get("copyGlobal", "copyGlobal"))
         if found.get("running"):
             raise RpcError(REQUEST_FAILED, notices.get("copyRunning", "stop the instance first"))
         jobs = home.copies(Path(found["path"]))
@@ -204,7 +205,7 @@ class Backend(Handler):
             for job in jobs:
                 files, missed = home.copy_missing(job.source, job.target)
                 copied, skipped = copied + files, skipped + missed
-            self._known_instances(host).mark_home_copied(instance_id)
+            self._home_copies(host).mark(instance_id)
         except OSError as failure:
             error = str(failure)
         finally:
@@ -235,24 +236,28 @@ class Backend(Handler):
         except node_release.ReleaseError as error:
             raise RpcError(REQUEST_FAILED, str(error)) from error
 
-    def _instance_components(self, host: Host, instance: dict[str, Any], values: dict[str, Any]) -> Components:
-        parts = layout.components(instance)
-        if parts is None:
-            raise RpcError(INVALID_PARAMS, "the instance's components are missing (Hanafubuki 0.3.30 sends them)")
-        self._known_instances(host).remember(str(instance.get("id", "")), parts, values)
-        return parts
+    def _own_layout(self, host: Host, parts: Components, platform: str) -> Layout:
+        # A `dsh` instance whose `core` holds Node.js is a global prefix an
+        # earlier version attached as `dsh`, its `node` (the prefix's `bin`)
+        # owned: a plan would unpack Node.js over it.
+        if layout.holds_node_program(parts, platform):
+            raise RpcError(REQUEST_FAILED, self._notice(host, "legacyGlobal").format(prefix=parts.core.path))
+        return layout.own(platform)
 
     def _instance(self, host: Host, instance_id: str) -> dict[str, Any]:
-        for found in host.call("instances.ofType", {"type": TYPE_ID}).get("instances", []):
+        for found in host.call("instances.ofType", {}).get("instances", []):
             if found.get("id") == instance_id:
                 return found
         raise RpcError(REQUEST_FAILED, f"no DeepSeek Harness instance {instance_id}")
 
-    def _known_instances(self, host: Host) -> KnownInstances:
+    def _home_copies(self, host: Host) -> HomeCopies:
         with self._lock:
-            if self._known is None:
-                self._known = KnownInstances(self._data_dir(host) / "instances.json")
-            return self._known
+            if self._copies is None:
+                self._copies = HomeCopies(self._data_dir(host) / "home-copied.json")
+            return self._copies
+
+    def _notice(self, host: Host, name: str) -> str:
+        return str(locale_strings(self._locale(host)).get("notices", {}).get(name, name))
 
     def _platform_of(self, host: Host) -> str:
         if self._platform is None:
@@ -273,14 +278,22 @@ class Backend(Handler):
         return Remote(host, self._data_dir(host))
 
 
+def _components(instance: Any) -> Components:
+    # Sent with every provider call and listed instance since Hanafubuki 0.3.31.
+    parts = layout.components(instance)
+    if parts is None:
+        raise RpcError(INVALID_PARAMS, "the instance's components are missing (Hanafubuki 0.3.31 sends them)")
+    return parts
+
+
 def own_node_problem(parts: Components, platform: str, texts: dict[str, Any]) -> str | None:
     """Why an external ``node`` cannot run dsh: no program, one too old, or no npm beside it; ``None`` when it can.
 
-    A global prefix's Node.js is not asked: the prefix is what it is.
+    Only a ``dsh`` instance is asked: a global prefix is what it is.
     """
-    shape = layout.read(parts, platform)
-    if shape.global_prefix or not parts.node.external:
+    if not parts.node.external:
         return None
+    shape = layout.own(platform)
     notices = texts.get("notices", {})
     program = shape.path(shape.node, parts)
     version = _node_version(program)

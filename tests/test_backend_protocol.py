@@ -1,8 +1,8 @@
 """The backend as the host runs it: ``backend/main.py`` over its stdin and stdout.
 
 The test is the host: it sends the protocol's frames, with each provider
-call's ``instance`` carrying the component map as Hanafubuki 0.3.30 does,
-and answers the backend's own calls (``host.info``, ``settings.get``,
+call's ``instance`` and each listed instance carrying the component map
+as Hanafubuki 0.3.31 does, and answers the backend's own calls (``host.info``, ``settings.get``,
 ``download.fetch`` from the recorded fixtures, ``instances.ofType``,
 ``ui.progress``, ``ui.notify``).
 """
@@ -22,6 +22,8 @@ from typing import Any, BinaryIO, cast
 import node_release
 from tests.support import FIXTURES, ROOT, SDK, TYPE_ID, needs_sdk
 
+GLOBAL_TYPE_ID = "io.github.licyk.deepseek-harness:dsh-global"
+
 ARCH = node_release.machine_arch()
 NO_SHELL_NODE = unittest.skipIf(sys.platform == "win32", "the fake node is a shell script")
 
@@ -34,6 +36,7 @@ class FakeHost:
         data_dir: Path,
         instance_root: Path,
         user_home: Path,
+        listed: dict[str, Any],
         platform: str = "linux",
         settings: dict | None = None,
     ) -> None:
@@ -43,6 +46,8 @@ class FakeHost:
         self.platform = platform
         self.settings = settings or {}
         self.instance_root = instance_root
+        # The instance `instances.ofType` lists: its id, type and components.
+        self.listed = listed
         self.running = False
         self.fail_fetches = False
         self.refused: set[str] = set()
@@ -103,18 +108,9 @@ class FakeHost:
         elif method == "settings.get":
             reply["result"] = {"values": self.settings}
         elif method == "instances.ofType":
-            assert params == {"type": TYPE_ID}
-            reply["result"] = {
-                "instances": [
-                    {
-                        "id": "dsh-1",
-                        "name": "dsh",
-                        "type": TYPE_ID,
-                        "path": str(self.instance_root),
-                        "running": self.running,
-                    }
-                ]
-            }
+            assert params == {}
+            view = {"name": "dsh", "path": str(self.instance_root), "running": self.running, **self.listed}
+            reply["result"] = {"instances": [view]}
         elif method == "download.fetch" and self.fail_fetches:
             reply["error"] = {"code": -32003, "message": "network unreachable"}
         elif method == "download.fetch":
@@ -156,9 +152,13 @@ def _serve(url: str, destination: Path) -> None:
     destination.write_text("".join(f"{'ab' * 32}  {name}\n" for name in names), encoding="utf-8")
 
 
-def instance(core: Path, node: Path, core_external: bool = False, node_external: bool = False) -> dict[str, Any]:
+def instance(
+    core: Path, node: Path, core_external: bool = False, node_external: bool = False, type_id: str = TYPE_ID
+) -> dict[str, Any]:
+    """The instance as a provider call sends it and ``instances.ofType`` lists it (``type`` too)."""
     return {
         "id": "dsh-1",
+        "type": type_id,
         "components": {
             "core": {"path": str(core), "external": core_external},
             "node": {"path": str(node), "external": node_external},
@@ -183,7 +183,7 @@ class BackendProtocolTest(unittest.TestCase):
         self.user.mkdir()
         (self.root / "core").mkdir(parents=True)
         self.instance = instance(self.root / "core", self.root / "node")
-        self.host = FakeHost(self.directory / "data", self.root, self.user)
+        self.host = FakeHost(self.directory / "data", self.root, self.user, self.instance)
 
     def tearDown(self) -> None:
         if self.host.process.poll() is None:
@@ -338,8 +338,6 @@ class BackendProtocolTest(unittest.TestCase):
         self.assertEqual(answer["argv"][:2], ["{host.python}", "{extension.root}/launcher/launch.py"])
         self.assertIn("{component.node}/bin/node", answer["argv"])
         self.assertEqual(answer["env"], {})
-        user = self.host.request("provider.launchPlan", {**params, "values": {"home": "user"}})["result"]
-        self.assertEqual(user["env"], {"DSH_HOME": "", "DSH_AGENTS_HOME": ""})
         unknown = self.host.request("provider.launchPlan", {**params, "role": "api"})
         self.assertEqual(unknown["error"]["code"], -32602)
 
@@ -353,7 +351,6 @@ class BackendProtocolTest(unittest.TestCase):
         self.assertEqual(status["node"], "24.11.0")
         self.assertEqual(status["requested"], {"version": "next", "nodeVersion": "24"})
         self.assertEqual(status["nodeSource"], "managed")
-        self.assertEqual(status["home"], "instance")
         self.assertEqual(status["homePath"], str(self.root / "dsh-home"))
         self.assertFalse(status["canCopyHome"])  # there is no ~/.dsh
         self.assertEqual(status["locale"], "zh")
@@ -363,23 +360,29 @@ class BackendProtocolTest(unittest.TestCase):
         self.assertEqual(self.host.request("ui.frame.call", params)["error"]["code"], -32003)
 
     @NO_SHELL_NODE
-    def test_frame_status_of_an_external_node_from_the_last_provider_call(self) -> None:
+    def test_frame_status_of_an_external_node_from_the_listed_components(self) -> None:
         mine = self.directory / "my-node"
         fake_node(mine / "bin" / "node", "25.9.0")
-        sent = instance(self.root / "core", mine, node_external=True)
-        self.host.request(
-            "provider.launchPlan",
-            {"type": TYPE_ID, "role": "web", "port": 4000, "values": {"home": "user"}, "instance": sent},
-        )
-        self.assertEqual(self.host.close(), 0)
-        # A restarted backend still knows: the frame's call carries only the id.
-        self.host = FakeHost(self.directory / "data", self.root, self.user)
+        # The frame's call carries only the id; `instances.ofType` lists the components.
+        self.host.listed = instance(self.root / "core", mine, node_external=True)
         status = self.status()
         self.assertEqual(status["nodeSource"], "own")
         self.assertEqual(status["node"], "25.9.0")
         self.assertEqual(status["nodePath"], str(mine / "bin" / "node"))
-        self.assertEqual(status["home"], "user")
-        self.assertEqual(status["homePath"], "~/.dsh")
+
+    def test_a_prefix_an_earlier_version_attached_as_dsh_is_refused(self) -> None:
+        # Its `node` (the prefix's `bin`) is owned: a plan would unpack Node.js over it.
+        prefix = self.directory / "nodejs"
+        fake_node(prefix / "bin" / "node", "24.11.0")
+        legacy = instance(prefix, prefix / "bin")
+        for method, params in (
+            ("provider.installPlan", {"type": TYPE_ID, "kind": "update", "values": {}, "instance": legacy}),
+            ("provider.launchPlan", {"type": TYPE_ID, "role": "web", "port": 1, "values": {}, "instance": legacy}),
+        ):
+            refused = self.host.request(method, params)
+            self.assertEqual(refused["error"]["code"], -32003, refused)
+            self.assertIn(str(prefix), refused["error"]["message"])
+        self.assertTrue((prefix / "bin" / "node").is_file())
 
     def test_copy_home_once_from_the_frame(self) -> None:
         dsh = self.user / ".dsh"
@@ -443,8 +446,8 @@ class GlobalPrefixTest(unittest.TestCase):
         package.mkdir(parents=True)
         (package / "package.json").write_text(json.dumps({"name": "@deepseek-ai/dsh", "version": "0.2.1"}))
         # What the Unix signature attaches: `core` the prefix, `node` its bin, both external.
-        self.instance = instance(self.prefix, self.prefix / "bin", True, True)
-        self.host = FakeHost(self.directory / "data", self.prefix, self.directory)
+        self.instance = instance(self.prefix, self.prefix / "bin", True, True, GLOBAL_TYPE_ID)
+        self.host = FakeHost(self.directory / "data", self.prefix, self.directory, self.instance)
 
     def tearDown(self) -> None:
         if self.host.process.poll() is None:
@@ -453,47 +456,65 @@ class GlobalPrefixTest(unittest.TestCase):
         shutil.rmtree(self.directory, ignore_errors=True)
 
     def plan(self, kind: str, values: dict[str, Any]) -> list[dict[str, Any]]:
-        params = {"type": TYPE_ID, "kind": kind, "values": values, "instance": self.instance}
+        params = {"type": GLOBAL_TYPE_ID, "kind": kind, "values": values, "instance": self.instance}
         return self.host.request("provider.installPlan", params)["result"]["steps"]
 
     def test_update_runs_the_prefix_npm_globally_and_leaves_node(self) -> None:
-        for kind in ("update", "install"):
-            for node_version in ("24", "26"):
-                [step] = self.plan(kind, {"version": "0.2.2", "nodeVersion": node_version})
-                self.assertEqual(
-                    step["command"][:4],
-                    [
-                        "{component.core}/bin/node",
-                        "{component.core}/lib/node_modules/npm/bin/npm-cli.js",
-                        "install",
-                        "--global",
-                    ],
-                )
-                self.assertEqual(step["command"][-1], "@deepseek-ai/dsh@0.2.2")
+        self.host.settings = {"npmRegistry": "https://registry.npmmirror.com", "nodeMirror": "https://m/"}
+        for kind in ("update", "reinstall"):
+            [step] = self.plan(kind, {"version": "0.2.2"})
+            self.assertEqual(
+                step["command"],
+                [
+                    "{component.core}/bin/node",
+                    "{component.core}/lib/node_modules/npm/bin/npm-cli.js",
+                    "install",
+                    "--global",
+                    "--prefix",
+                    "{component.core}",
+                    "--no-fund",
+                    "--no-audit",
+                    "@deepseek-ai/dsh@0.2.2",
+                ],
+            )
+            # The user's own npm configuration applies, the extension's settings do not.
+            self.assertEqual(step["env"], {})
         self.assertEqual(self.host.fetched, [])
+
+    def test_it_is_attached_never_installed(self) -> None:
+        params = {"type": GLOBAL_TYPE_ID, "kind": "install", "values": {}, "instance": self.instance}
+        refused = self.host.request("provider.installPlan", params)
+        self.assertEqual(refused["error"]["code"], -32003)
+        self.assertIn("npm install --global", refused["error"]["message"])
 
     def test_without_dsh_the_prefix_node_is_still_left_alone(self) -> None:
         shutil.rmtree(self.prefix / "lib" / "node_modules" / "@deepseek-ai")
-        for kind in ("update", "install"):
-            [step] = self.plan(kind, {})
-            self.assertEqual(step["command"][2:4], ["install", "--global"])
+        [step] = self.plan("update", {})
+        self.assertEqual(step["command"][2:4], ["install", "--global"])
         self.assertEqual(self.host.fetched, [])
 
     def test_launch_plan_runs_the_prefix_node(self) -> None:
-        params = {"type": TYPE_ID, "role": "web", "port": 4000, "values": {"home": "user"}, "instance": self.instance}
+        params = {"type": GLOBAL_TYPE_ID, "role": "web", "port": 4000, "values": {}, "instance": self.instance}
         answer = self.host.request("provider.launchPlan", params)["result"]
         self.assertEqual(answer["argv"][2:6], ["--core", "{component.core}/lib", "--node", "{component.core}/bin/node"])
-        self.assertEqual(answer["env"], {"DSH_HOME": "", "DSH_AGENTS_HOME": ""})
+        self.assertEqual(answer["env"], {})
+
+    def test_no_copy_of_the_home_it_already_uses(self) -> None:
+        (self.directory / ".dsh").mkdir()
+        params = {"type": GLOBAL_TYPE_ID, "operation": "copy-user-home", "instance": self.instance}
+        self.assertEqual(self.host.request("provider.manage.copy-user-home", params)["error"]["code"], -32602)
+        call = {"frame": "versions", "method": "copyHome", "params": None, "context": {"instanceId": "dsh-1"}}
+        self.assertEqual(self.host.request("ui.frame.call", call)["error"]["code"], -32602)
 
     def test_frame_status(self) -> None:
-        # Never seen by a provider call: read from the root, as its signature maps it.
+        (self.directory / ".dsh").mkdir()
         params = {"frame": "versions", "method": "status", "params": None, "context": {"instanceId": "dsh-1"}}
         status = self.host.request("ui.frame.call", params)["result"]
         self.assertEqual(status["installed"], "0.2.1")
         self.assertEqual(status["node"], "24.11.0")
         self.assertEqual(status["nodeSource"], "prefix")
         self.assertEqual(status["prefix"], str(self.prefix))
-        self.assertEqual(status["home"], "user")
+        self.assertIsNone(status["homePath"])
         self.assertFalse(status["canCopyHome"])
         self.assertEqual(status["requested"], {"version": None, "nodeVersion": None})
 

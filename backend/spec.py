@@ -20,10 +20,6 @@ EXACT = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)$")
 MINIMUM_NODE = (24, 9, 0)
 DEFAULT_VERSION = "latest"
 DEFAULT_NODE_VERSION = "24"
-# Where dsh keeps its profiles, credentials and sessions: the instance's own
-# folders, or the user's `~/.dsh` and `~/.agents`.
-HOMES = ("instance", "user")
-DEFAULT_HOME = "instance"
 
 
 @dataclass(frozen=True)
@@ -79,12 +75,6 @@ def node_version(values: dict[str, object]) -> str:
     """The ``nodeVersion`` value, its default when unset."""
     value = values.get("nodeVersion")
     return value.strip() if isinstance(value, str) and value.strip() else DEFAULT_NODE_VERSION
-
-
-def home(values: dict[str, object]) -> str:
-    """The ``home`` value, its default when unset or unknown."""
-    value = values.get("home")
-    return value if isinstance(value, str) and value in HOMES else DEFAULT_HOME
 
 
 def issues(values: dict[str, object]) -> dict[str, str]:

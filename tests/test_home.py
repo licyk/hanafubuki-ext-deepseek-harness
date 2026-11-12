@@ -1,4 +1,4 @@
-"""dsh's homes: copying the user's into an instance, and what the backend remembers of an instance."""
+"""dsh's homes: copying the user's into an instance, and remembering that it was."""
 
 from __future__ import annotations
 
@@ -10,8 +10,7 @@ from pathlib import Path
 from unittest import mock
 
 import home
-import layout
-from known import KnownInstances
+from copied import HomeCopies
 
 
 class CopyTest(unittest.TestCase):
@@ -91,31 +90,22 @@ class CopyTest(unittest.TestCase):
         self.assertEqual((self.root / "dsh-home" / "ok").read_text(), "y")
 
 
-class KnownInstancesTest(unittest.TestCase):
+class HomeCopiesTest(unittest.TestCase):
     def test_remembers_across_restarts(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "data" / "instances.json"
-            parts = layout.Components(
-                layout.Component(Path(directory) / "core"), layout.Component(Path(directory) / "mine", True)
-            )
-            known = KnownInstances(path)
-            self.assertIsNone(known.components("dsh-1"))
-            self.assertEqual(known.values("dsh-1"), {})
-            self.assertFalse(known.home_copied("dsh-1"))
-            known.remember("dsh-1", parts, {"home": "user"})
-            known.remember("dsh-1", parts, None)  # a call without values keeps the last ones
-            known.mark_home_copied("dsh-1")
+            path = Path(directory) / "data" / "home-copied.json"
+            copies = HomeCopies(path)
+            self.assertNotIn("dsh-1", copies)
+            copies.mark("dsh-1")
+            copies.mark("dsh-1")
+            self.assertIn("dsh-1", HomeCopies(path))
+            self.assertNotIn("dsh-2", HomeCopies(path))
 
-            again = KnownInstances(path)
-            self.assertEqual(again.components("dsh-1"), parts)
-            self.assertEqual(again.values("dsh-1"), {"home": "user"})
-            self.assertTrue(again.home_copied("dsh-1"))
-
-    def test_a_file_that_does_not_read_is_no_knowledge(self) -> None:
+    def test_a_file_that_does_not_read_is_no_copy(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "instances.json"
+            path = Path(directory) / "home-copied.json"
             path.write_text("[not json", encoding="utf-8")
-            self.assertIsNone(KnownInstances(path).components("dsh-1"))
+            self.assertNotIn("dsh-1", HomeCopies(path))
 
 
 if __name__ == "__main__":

@@ -5,10 +5,19 @@ A [Hanafubuki](https://github.com/licyk/Hanafubuki) extension that installs
 the npm package `@deepseek-ai/dsh`) on a Node.js of its own (or one of
 yours), isolated from your npm configuration and your `~/.dsh`, runs its web
 UI and opens it in Hanafubuki's embedded browser, and switches its npm
-versions.
+versions. A dsh you installed yourself with `npm install --global` is
+attached as it is, with your Node.js, npm configuration and `~/.dsh`.
 
-Id `io.github.licyk.deepseek-harness`; it adds the instance type
-`io.github.licyk.deepseek-harness:dsh`.
+Id `io.github.licyk.deepseek-harness`; it adds two instance types:
+
+- `io.github.licyk.deepseek-harness:dsh` (*DeepSeek Harness*): what this
+  extension installs, always isolated ([Isolation](#isolation)).
+- `io.github.licyk.deepseek-harness:dsh-global` (*DeepSeek Harness (global
+  npm install)*): a Node.js prefix holding a dsh you installed globally,
+  attached by discovery and never installed by Hanafubuki
+  ([Global npm installs](#global-npm-installs)).
+
+The rest of this section, and [Isolation](#isolation), are about `dsh`.
 
 ## What it does
 
@@ -28,14 +37,12 @@ Id `io.github.licyk.deepseek-harness`; it adds the instance type
 - **Parameters**: `version` (`latest` by default; a dist-tag such as `next`
   or `alpha`, or an exact version), `nodeVersion` (`24` by default; a major,
   `lts`, `latest`, or an exact version such as `24.9.1`; dsh needs Node.js
-  24.9.0 or later) and `home` (`instance` by default, or `user`;
-  [Isolation](#isolation)).
+  24.9.0 or later).
 - **Update**: runs npm again with the instance's (possibly replaced) values.
   `nodeVersion` is resolved again, and Node.js is downloaded only when it
   names another release than the one recorded: an update of `24` picks up a
   newer 24.x. Offline, an update whose `nodeVersion` did not change keeps
-  the Node.js it has. A discovered global prefix is updated with its own npm
-  only ([Discovery](#discovery)).
+  the Node.js it has.
 - **Your own Node.js**: in the instance's **Paths**, `node` may be an
   existing Node.js (pick its `bin/node`, or `node.exe` on Windows). It is
   then external: no plan downloads into it, and deleting or reinstalling
@@ -58,16 +65,16 @@ Id `io.github.licyk.deepseek-harness`; it adds the instance type
   versions* section: the installed dsh and Node.js (the managed one, "your
   own (vX)", or "uses the system's Node.js and dsh (`<prefix>`)"), the npm
   dist-tags and versions, and **Switch**, which asks Hanafubuki to update the
-  instance with that version (Hanafubuki asks you to confirm); dsh's home,
-  a switch between the instance's and `~/.dsh`, and, once, **Copy from
-  ~/.dsh**.
+  instance with that version (Hanafubuki asks you to confirm); dsh's home
+  and, once, **Copy from ~/.dsh**.
 - **Copy from ~/.dsh** (also the instance's *Copy from ~/.dsh* operation):
   copies `~/.dsh` into `dsh-home` and `~/.agents` into `agents-home`, with
   the instance stopped. Nothing is moved, and a file the instance's home
   already has is kept.
 - **Discovery**: Hanafubuki's discovery attaches what it recognizes
-  ([Discovery](#discovery)): this extension's own layout, and a Node.js
-  where dsh was installed with `npm install --global`.
+  ([Discovery](#discovery)): this extension's own layout as `dsh`, and a
+  Node.js where dsh was installed with `npm install --global` as
+  `dsh-global`.
 - **Settings**: *npm registry* (for example `https://registry.npmmirror.com`)
   for installs and the version list, and *Node.js download mirror* (for
   example `https://cdn.npmmirror.com/binaries/node`). Both are empty by
@@ -75,11 +82,12 @@ Id `io.github.licyk.deepseek-harness`; it adds the instance type
 
 ## Requirements
 
-- Hanafubuki 0.3.30 or later (below 0.4): backend-provided types with
+- Hanafubuki 0.3.31 or later (below 0.4): backend-provided types with
   `preview`, component labels, `[environment]` (with `unset`), the
   `terminal` operation, `strip` and `replace`, `{host.python}`,
   `{extension.root}` and `{instance.root}`; external components and the
-  component map in provider calls; `captured` readiness for a declared
+  component map in provider calls and in the instances `instances.ofType`
+  lists; `captured` readiness for a declared
   server role; `[[discovery]]` signatures with `external`;
   `sdWebuiAllInOne` for a Python backend; and the frame client's
   `updateInstance` for the **Switch** button.
@@ -117,20 +125,13 @@ steps, the `web` server and the terminal alike:
   `DSH_AGENTS_HOME=<instance>/agents-home`, so the instance has its own
   profiles, logins, sessions, plugins and agent configuration. **A new
   instance therefore starts without the login of a dsh you ran before**: use
-  **Copy from ~/.dsh** on the versions page, or set `home = user` (the
-  launch then empties both variables, which dsh reads as unset: `~/.dsh` and
-  `~/.agents`, shared with every other dsh). An instance installed by an
-  earlier version of this extension has no `home` value and so takes
-  `instance` too.
+  **Copy from ~/.dsh** on the versions page. An instance an earlier version
+  of this extension installed gets its own home too, from its next start.
 - **PATH**: `core/node_modules/.bin` (dsh), then `core/bin` and `core` (what
   a global install there adds), then Node.js (`node`, `node/bin`). `dsh`,
   `npm` and `node` typed in the terminal, or in the shells dsh starts for its
   agents, are the instance's; the terminal puts these entries first again
   after your shell's startup files.
-
-The `home` choice reaches the server only: the terminal's environment is the
-type's, so `dsh` typed in the terminal of a `home = user` instance uses the
-instance's `dsh-home`.
 
 ## How launching works
 
@@ -190,60 +191,61 @@ prints where its page is.
 
 ## Discovery
 
-The type declares three `[[discovery]]` signatures (`types/dsh.toml`). The
-scanner tries them in order at each directory it visits; every marker must
-be a regular file or directory reached through no link.
+The types declare three `[[discovery]]` signatures (`types/dsh.toml`,
+`types/dsh-global.toml`). The scanner tries them at each directory it
+visits; every marker must be a regular file or directory reached through
+no link.
 
-| Signature | Markers (below the directory) | Instance root | `core` | `node` |
-| --- | --- | --- | --- | --- |
-| This extension's layout | `core/node_modules/@deepseek-ai/dsh/package.json`, `node` | the directory | `core` | `node` |
-| A Unix global prefix | `bin/node`, `lib/node_modules/@deepseek-ai/dsh/package.json` | the prefix | the prefix (`.`) | `bin` |
-| A Windows global prefix | `node.exe`, `node_modules/@deepseek-ai/dsh/package.json`, `node_modules/npm/package.json` | the prefix | the prefix (`.`) | `node_modules/npm` |
+| Type | Signature | Markers (below the directory) | Instance root | `core` | `node` |
+| --- | --- | --- | --- | --- | --- |
+| `dsh` | This extension's layout | `core/node_modules/@deepseek-ai/dsh/package.json`, `node` | the directory | `core` | `node` |
+| `dsh-global` | A Unix global prefix | `bin/node`, `lib/node_modules/@deepseek-ai/dsh/package.json` | the prefix | the prefix (`.`) | `bin` |
+| `dsh-global` | A Windows global prefix | `node.exe`, `node_modules/@deepseek-ai/dsh/package.json`, `node_modules/npm/package.json` | the prefix | the prefix (`.`) | `node_modules/npm` |
 
-A global prefix is attached with the install parameters' defaults
-(`version = "latest"`, `nodeVersion = "24"`) and `home = "user"`, so its dsh
-keeps the `~/.dsh` it had: a signature is static, so it cannot read what is
-installed. Both its components are recorded as external (the signatures'
-`external = ["core", "node"]`): deleting the instance, with its files or
-not, never deletes the prefix. The versions page shows the installed dsh,
-asks that prefix's `node --version`, and says the instance "uses the
-system's Node.js and dsh (`<prefix>`)".
+## Global npm installs
 
-Why `core` is the whole prefix rather than `lib` (where Unix keeps
-`node_modules`): Hanafubuki refuses a component that equals or contains
-the instance root unless it is `core`, refuses one component inside
-another unless that one is `core` and `core` is the root, and refuses a
-forced reinstall that would remove a `core` equal to the root. So `node`
-cannot be the prefix itself; it is the prefix's `bin` (Unix) or its
-bundled npm's directory (Windows, where `node.exe` sits at the prefix's
-root and no directory below holds it). So the type's `executable` for
-`node` (`bin/node`, `node.exe`), which is what a Node.js of yours chosen in
-**Paths** holds, does not describe a prefix's `node`. The backend reads
-which layout an instance has from its `core`: a node program there
-(`bin/node`, `node.exe`) makes it a global prefix, with or without dsh, so
-a prefix whose dsh was uninstalled is still never given a Node.js. It
-addresses the prefix's Node.js through `core`:
-`{component.core}/bin/node` with dsh in `{component.core}/lib`, or
-`{component.core}/node.exe` with dsh in `{component.core}`. The type's
-`PATH` holds `{component.core}/bin` and `{component.core}`, which put a
-prefix's Node.js and global commands on it.
+A `dsh-global` instance is a Node.js prefix of yours with dsh installed by
+`npm install --global`, attached by discovery with `version = "latest"`
+(a signature is static, so it cannot read what is installed). It is your
+dsh as it is:
 
-For a global prefix:
-
+- **No isolation**: the type's environment only puts the prefix's
+  programs on `PATH` (`{component.core}/bin`, then `{component.core}`).
+  Your npm configuration, your `DSH_HOME` (or `~/.dsh`) and your Node.js
+  apply to its server, its terminal and its updates, and nothing of the
+  extension's settings (registry, Node.js mirror) does. Nothing is written
+  into the prefix by the extension.
+- **Never installed**: creating one from the instance list fails at its
+  install with why; attach a prefix by scanning its folder instead.
 - **Update** (and **Switch**) runs the prefix's own npm,
   `node <npm-cli.js> install --global --prefix <prefix> @deepseek-ai/dsh@<version>`.
-  Nothing else is planned: no Node.js is downloaded, replaced or emptied,
-  whatever `nodeVersion` says, and nothing (no `hanafubuki-install.txt`, no
-  `.npmrc`) is written into the prefix; the registry setting is the step's
-  `npm_config_registry`. The versions page hides its Node.js control.
-- A forced reinstall leaves it (its components are external).
-- Deleting the instance never deletes the prefix. Its root is the prefix,
-  so what the type's environment puts under `{instance.root}` (npm's cache
-  during an update, `dsh-home` for a `home = instance` instance or its
-  terminal) is created in the prefix.
+  No Node.js is downloaded, replaced or emptied. The versions page says it
+  "uses the system's Node.js and dsh (`<prefix>`)" and has no Node.js
+  control and no copy of `~/.dsh`.
+- **Never deleted**: both components are external (the signatures'
+  `external = ["core", "node"]`), so deleting the instance, with its files
+  or not, and a forced reinstall leave the prefix.
 - dsh's `open` is intercepted under the prefix: an http(s) page that
   another global package in it opens while dsh runs it is shown in
   Hanafubuki too.
+
+Why `core` is the whole prefix rather than `lib` (where Unix keeps
+`node_modules`): Hanafubuki refuses a component that equals or contains
+the instance root unless it is `core`, and refuses one component inside
+another unless that one is `core` and `core` is the root. So `node`
+cannot be the prefix itself; it is the prefix's `bin` (Unix) or its
+bundled npm's directory (Windows, where `node.exe` sits at the prefix's
+root and no directory below holds it), and plans address the prefix's
+Node.js through `core`: `{component.core}/bin/node` with dsh in
+`{component.core}/lib`, or `{component.core}/node.exe` with dsh in
+`{component.core}`.
+
+**A prefix an earlier version attached** was recorded as a `dsh` instance,
+with its components owned. The extension refuses to plan or start such an
+instance (its `core` holds Node.js) rather than unpack Node.js over the
+prefix's `bin`. Delete its record only (**Delete record only** keeps every
+file; deleting it with its files would delete the prefix), then scan the
+folder again: it is attached as `dsh-global`.
 
 What is not discovered:
 
@@ -264,23 +266,22 @@ What is not discovered:
 - The instance's directory: `core/` (dsh and its npm dependencies,
   `.npmrc`, `hanafubuki-install.txt`), `node/` (Node.js, unless it is yours),
   `dsh-home/` and `agents-home/` (dsh's profiles, credentials, sessions and
-  agent configuration, with `home = instance`) and `.npm-cache/`. They are
-  deleted with the instance; a reinstall keeps the homes and the cache.
-- With `home = user`, dsh's data is in `~/.dsh` and `~/.agents`, shared with
-  a dsh you run yourself, and kept when the instance is deleted.
+  agent configuration) and `.npm-cache/`. They are deleted with the
+  instance; a reinstall keeps the homes and the cache.
+- A `dsh-global` instance's dsh keeps its data where your dsh does
+  (`~/.dsh`), kept when the instance is deleted.
 - The extension's data directory: `cache/` (the release index for an hour,
   each release's `SHASUMS256.txt`, the npm registry's document for ten
-  minutes) and `instances.json` (each instance's components and values as
-  the last provider call gave them, for the versions page, whose calls carry
-  only the instance's id; and whether `~/.dsh` was copied in).
+  minutes) and `home-copied.json` (the instances `~/.dsh` was copied into,
+  so the versions page offers the copy once).
 
 ## Development
 
 | Path | What |
 | --- | --- |
 | `hanafubuki-extension.toml` | The manifest. |
-| `types/dsh.toml` | The type: components, environment, parameters, operations, the `web` role, discovery. |
-| `backend/` | The Python backend: `main.py` (the handler), `spec.py` (the parameters), `node_release.py` (the Node.js release), `layout.py` (the components and the layouts), `plans.py` (the steps and the command), `home.py` (dsh's homes and the copy), `known.py` (what the versions page knows of an instance), `remote.py` (fetching and caching). |
+| `types/dsh.toml`, `types/dsh-global.toml` | The two types: components, environment, parameters, operations, the `web` role, discovery. |
+| `backend/` | The Python backend: `main.py` (the handler), `spec.py` (the parameters), `node_release.py` (the Node.js release), `layout.py` (the components and the layouts), `plans.py` (the steps and the command), `home.py` (dsh's homes and the copy), `copied.py` (which instances it was copied into), `remote.py` (fetching and caching). |
 | `launcher/` | What the host runs: `launch.py`, `start-dsh.mjs`, `intercept.mjs`, `open-stub.mjs`. |
 | `ui/versions/` | The built versions page (committed). |
 | `web/` | Its Vue 3 + Vite source; not part of the package. |
@@ -331,19 +332,19 @@ The archive holds the manifest, `README.md`, `LICENSE`, `types/`,
 这是 Hanafubuki 的扩展：在实例自带的（或你自己的）Node.js 上用 npm 安装
 DeepSeek Harness（`@deepseek-ai/dsh`），与你的 npm 配置和 `~/.dsh` 隔离，启动它的
 网页界面并在 Hanafubuki 内置浏览器中打开，并可在实例管理页的「DeepSeek Harness
-版本」中切换 npm 版本。
+版本」中切换 npm 版本。你自己用 `npm install --global` 安装的 dsh 会以
+「DeepSeek Harness（全局 npm 安装）」类型（`dsh-global`）原样接入，使用你的 Node.js、
+npm 配置和 `~/.dsh`。
 
 - 参数：`version`（默认 `latest`，可填 `next`、`alpha` 或确切版本）、
   `nodeVersion`（默认 `24`，可填主版本号、`lts`、`latest` 或确切版本；dsh 需要
-  Node.js 24.9.0 及以上；更新时重新解析，`24` 会升级到更新的 24.x）与
-  `home`（默认 `instance`，或 `user`）。
+  Node.js 24.9.0 及以上；更新时重新解析，`24` 会升级到更新的 24.x）。
 - 隔离：类型的 `[environment]` 移除继承的 `npm_config_*`、`NODE_OPTIONS`、
   `NODE_PATH`，npm 的用户配置为 `core/.npmrc`（npm 源设置写在这里，不读取你的
   `~/.npmrc`），全局前缀为 `core`，缓存在实例的 `.npm-cache`；`DSH_HOME` 与
   `DSH_AGENTS_HOME` 为实例中的 `dsh-home`、`agents-home`。**因此新实例不带有你之前
   在 `~/.dsh` 中的登录**：可在版本页面使用「从 ~/.dsh 复制」（只复制、不移动、不覆盖
-  已有文件），或把 `home` 设为 `user` 共用 `~/.dsh`（仅对服务器生效，终端仍使用
-  实例的主目录）。终端和 dsh 启动的 shell 中，`dsh`、`npm`、`node` 都是实例自己的。
+  已有文件）。终端和 dsh 启动的 shell 中，`dsh`、`npm`、`node` 都是实例自己的。
 - 自己的 Node.js：在实例的「路径」中可把 `node` 指向已有的 Node.js（选择其
   `bin/node`，Windows 上为 `node.exe`）；它是外部组件，计划不会向其中下载，删除或
   重装实例也不会删除它；其版本须为 24.9.0 及以上且自带 npm。
@@ -357,14 +358,15 @@ DeepSeek Harness（`@deepseek-ai/dsh`），与你的 npm 配置和 `~/.dsh` 隔�
   token 的地址通过 `sd_webui_all_in_one` 的 broker 客户端上报为
   `browser.open`，由 Hanafubuki 在内置浏览器中打开；若 5 秒内没有拦截到，
   则改用 dsh 输出的 `dsh web: <url>` 行。
-- 发现：除本扩展的目录结构外，还能识别用 `npm install --global` 安装了 dsh 的
-  Node.js 前缀（Unix：`bin/node` 与 `lib/node_modules/@deepseek-ai/dsh`；Windows：
-  `node.exe`、`node_modules/@deepseek-ai/dsh` 与 `node_modules/npm`），`core` 为该前缀，
-  参数取默认值且 `home = user`，`core` 与 `node` 都记录为外部组件。对这类实例，
-  更新只用该前缀自带的 npm 执行 `npm install --global`，从不下载、替换或清空其中的
-  Node.js；删除实例不会删除该前缀。
+- 发现：除本扩展的目录结构（`dsh`）外，还能识别用 `npm install --global` 安装了 dsh
+  的 Node.js 前缀（`dsh-global`；Unix：`bin/node` 与 `lib/node_modules/@deepseek-ai/dsh`；
+  Windows：`node.exe`、`node_modules/@deepseek-ai/dsh` 与 `node_modules/npm`），`core`
+  为该前缀，`core` 与 `node` 都记录为外部组件。这类实例不做任何隔离，不能在
+  Hanafubuki 中安装，只能接入；更新只用该前缀自带的 npm 执行 `npm install --global`，
+  从不下载、替换或清空其中的 Node.js；删除实例不会删除该前缀。早期版本以 `dsh`
+  接入的前缀会被拒绝启动和更新：请「仅删除记录」后重新扫描。
 - 数据：实例目录中的 `dsh-home`、`agents-home` 与 `.npm-cache` 随实例删除；
-  `home = user` 时 dsh 的数据在 `~/.dsh`，删除实例不会删除它。
+  `dsh-global` 实例的 dsh 数据在 `~/.dsh`，删除实例不会删除它。
 - 设置：可配置 npm 源（如 `https://registry.npmmirror.com`）和 Node.js 下载镜像
   （如 `https://cdn.npmmirror.com/binaries/node`）。
 - 开发：`web/` 中执行 `npm ci && npm run build` 构建版本页面；以开发链接安装时，

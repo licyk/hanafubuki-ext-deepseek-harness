@@ -5,15 +5,14 @@
   },
   "components": {
     "core": "DeepSeek Harness",
-    "node": "Node.js"
+    "node": "Node.js",
+    "prefix": "Node.js 前缀"
   },
   "parameters": {
     "version": "dsh 版本",
     "versionHelp": "npm 发布标签（latest、next、alpha）或确切版本，例如 0.2.2。",
     "nodeVersion": "Node.js 版本",
-    "nodeVersionHelp": "主版本号（24）、lts、latest，或确切版本，例如 24.9.1；更新时选用它所指的最新发行版。dsh 需要 Node.js 24.9.0 或更高版本。使用你自己的 Node.js 时不使用此项。",
-    "home": "dsh 主目录",
-    "homeHelp": "dsh 保存配置档案、登录和会话的位置：此实例内（其文件夹中的 dsh-home 和 agents-home），或本机所有 dsh 共用的 ~/.dsh 和 ~/.agents。"
+    "nodeVersionHelp": "主版本号（24）、lts、latest，或确切版本，例如 24.9.1；更新时选用它所指的最新发行版。dsh 需要 Node.js 24.9.0 或更高版本。使用你自己的 Node.js 时不使用此项。"
   },
   "settings": {
     "npmRegistry": "npm 源",
@@ -55,16 +54,10 @@
     "nodeExternal": "此实例运行你自己的 Node.js（{path}）。Hanafubuki 不会向其中下载或更改它；在实例的路径中改用托管的 Node.js，即可由 Hanafubuki 管理。",
     "home": "dsh 主目录",
     "homeInstance": "此实例独立（{path}）",
-    "homeUser": "与所有 dsh 共享（~/.dsh）",
-    "useUserHome": "共享 ~/.dsh",
-    "useInstanceHome": "改用实例独立的",
-    "homeHint": "更改主目录会用 npm 重新安装 dsh。实例独立的主目录不包含 ~/.dsh 中的登录和会话。",
+    "homeUser": "你自己的（~/.dsh），与所有 dsh 共享",
+    "homeHint": "实例独立的主目录不包含 ~/.dsh 中的登录和会话。",
     "copyHome": "从 ~/.dsh 复制",
     "copyHomeHint": "将你的 ~/.dsh 和 ~/.agents（配置档案、登录、会话）复制到此实例的主目录；不会移动任何文件，已有的文件会保留。"
-  },
-  "homes": {
-    "instance": "此实例独立",
-    "user": "共享（~/.dsh）"
   },
   "operations": {
     "copy-user-home": "从 ~/.dsh 复制"
@@ -80,6 +73,13 @@
     "copyRunning": "请先停止实例，再将 ~/.dsh 复制进去。",
     "copyNothing": "没有可复制的 ~/.dsh 或 ~/.agents。",
     "copyBusy": "正在将 ~/.dsh 复制到此实例。",
-    "copySkipped": "{count} 个无法复制（Windows 不允许创建的链接，或正在使用的文件），已跳过。"
+    "copySkipped": "{count} 个无法复制（Windows 不允许创建的链接，或正在使用的文件），已跳过。",
+    "globalNotInstallable": "Hanafubuki 不会安装全局 npm 安装的 dsh：请先在你的 Node.js 中用 npm install --global 安装 dsh，再扫描其文件夹接入；或改为创建 DeepSeek Harness 实例。",
+    "legacyGlobal": "此实例是早期版本以独立 DeepSeek Harness 接入的全局 npm 安装（{prefix}），Hanafubuki 不会为它制定计划。请仅删除其记录（「仅删除记录」会保留所有文件），然后重新扫描该文件夹：它会以 DeepSeek Harness（全局 npm 安装）接入。",
+    "copyGlobal": "全局 npm 安装使用你的 ~/.dsh，无需复制。"
+  },
+  "globalType": {
+    "name": "DeepSeek Harness（全局 npm 安装）",
+    "description": "你在自己的 Node.js 中用 npm install --global 安装的 dsh，由发现功能接入：保留你的 Node.js、npm 配置与 ~/.dsh，并用该 Node.js 的 npm 更新。"
   }
 }

@@ -18,8 +18,8 @@ interface Status {
   nodeSource: "managed" | "own" | "prefix";
   nodePath: string;
   prefix: string | null;
-  home: "instance" | "user";
-  homePath: string;
+  // The instance's own dsh home; null for a global prefix, which uses ~/.dsh.
+  homePath: string | null;
   canCopyHome: boolean;
   copying: boolean;
   requested: { version: string | null; nodeVersion: string | null };
@@ -98,17 +98,22 @@ async function load(refresh = false): Promise<void> {
   }
 }
 
-async function update(values: { version?: string; nodeVersion?: string; home?: string }): Promise<void> {
+async function update(values: { version?: string; nodeVersion?: string }): Promise<void> {
   if (!client.updateInstance) return;
   busy.value = true;
   message.value = "";
   failed.value = false;
   try {
-    await client.updateInstance({
-      version: values.version ?? status.value?.requested.version ?? "latest",
-      nodeVersion: values.nodeVersion ?? (nodeVersion.value.trim() || status.value?.requested.nodeVersion || "24"),
-      ...(values.home ? { home: values.home } : {}),
-    });
+    const version = values.version ?? status.value?.requested.version ?? "latest";
+    // A global prefix's type has no `nodeVersion`: its Node.js is the user's.
+    await client.updateInstance(
+      status.value?.nodeSource === "prefix"
+        ? { version }
+        : {
+            version,
+            nodeVersion: values.nodeVersion ?? (nodeVersion.value.trim() || status.value?.requested.nodeVersion || "24"),
+          },
+    );
     message.value = t("started");
   } catch (error) {
     failed.value = true;
@@ -236,21 +241,10 @@ onMounted(() => {
 
     <section v-if="status" class="block">
       <h2>{{ t("home") }}</h2>
-      <div class="inline">
-        <span class="detail">
-          {{ status.home === "instance" ? t("homeInstance", { path: status.homePath }) : t("homeUser") }}
-        </span>
-        <button
-          v-if="status.nodeSource !== 'prefix'"
-          type="button"
-          class="button"
-          :disabled="!canUpdate || busy || status.running"
-          @click="update({ home: status.home === 'instance' ? 'user' : 'instance' })"
-        >
-          {{ status.home === "instance" ? t("useUserHome") : t("useInstanceHome") }}
-        </button>
-      </div>
-      <p class="hint">{{ t("homeHint") }}</p>
+      <p class="detail">
+        {{ status.homePath ? t("homeInstance", { path: status.homePath }) : t("homeUser") }}
+      </p>
+      <p v-if="status.homePath" class="hint">{{ t("homeHint") }}</p>
       <div v-if="status.canCopyHome" class="inline">
         <button type="button" class="button accent" :disabled="busy || status.running || status.copying" @click="copyHome()">
           {{ t("copyHome") }}

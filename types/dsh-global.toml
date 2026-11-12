@@ -1,0 +1,59 @@
+# A Node.js prefix where the user installed dsh with `npm install --global`,
+# attached by discovery and never installed by Hanafubuki (the backend
+# refuses a first install). It is the user's dsh: its Node.js, npm and npm
+# configuration, and `~/.dsh`, so the type sets nothing of `dsh`'s
+# isolation. Its update is the prefix's own npm, `npm install --global`
+# (backend/plans.py); Node.js is never downloaded, replaced or emptied.
+name = "dsh-global"
+provider = "backend"
+displayName = { key = "ext.io.github.licyk.deepseek-harness.globalType.name" }
+description = { key = "ext.io.github.licyk.deepseek-harness.globalType.description" }
+preview = "images/preview.png"
+# `core` is the prefix itself: the host refuses a component equal to the
+# root unless it is `core`, and only then lets another lie inside it. `node`
+# cannot be the prefix (it would equal `core`), so it is a directory inside
+# it, and plans address Node.js through `core`. Both are external: deleting
+# the instance or reinstalling it never removes the user's Node.js.
+components = [
+  { name = "core", label = { key = "ext.io.github.licyk.deepseek-harness.components.prefix" }, external = "allowed" },
+  { name = "node", label = { key = "ext.io.github.licyk.deepseek-harness.components.node" }, external = "allowed" },
+]
+runtime = { kind = "none" }
+
+# The prefix's programs (Node.js, npm, dsh): `bin` on Unix, the prefix
+# itself on Windows.
+[environment]
+path = ["{component.core}/bin", "{component.core}"]
+
+[[install.parameters]]
+name = "version"
+kind = "text"
+label = { key = "ext.io.github.licyk.deepseek-harness.parameters.version" }
+help = { key = "ext.io.github.licyk.deepseek-harness.parameters.versionHelp" }
+default = "latest"
+
+[management]
+operations = ["update", "terminal"]
+
+[[servers]]
+role = "web"
+port = { allocate = true }
+readiness = { captured = true, timeoutSeconds = 180 }
+restart = "on-failure"
+webview = true
+
+# `version` is its default: nothing on disk says which dist-tag was installed.
+#
+# Unix: `bin/node`, `lib/node_modules`.
+[[discovery]]
+markers = ["bin/node", "lib/node_modules/@deepseek-ai/dsh/package.json"]
+components = { core = ".", node = "bin" }
+external = ["core", "node"]
+values = { version = "latest" }
+
+# Windows: `node.exe` and `node_modules` at the prefix's root.
+[[discovery]]
+markers = ["node.exe", "node_modules/@deepseek-ai/dsh/package.json", "node_modules/npm/package.json"]
+components = { core = ".", node = "node_modules/npm" }
+external = ["core", "node"]
+values = { version = "latest" }

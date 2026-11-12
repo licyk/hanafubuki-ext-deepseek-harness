@@ -214,7 +214,7 @@ class PlanTest(unittest.TestCase):
             (layout.global_prefix("windows"), "{component.core}", "{component.core}/node.exe"),
         )
         for kind, core, node in cases:
-            command = plans.launch_command(kind, "instance")
+            command = plans.launch_command(kind)
             self.assertEqual(
                 command["argv"],
                 [
@@ -229,20 +229,17 @@ class PlanTest(unittest.TestCase):
                 ],
             )
 
-    def test_dsh_home_per_choice(self) -> None:
-        # `instance`: the type's environment (DSH_HOME under the root) stands.
-        self.assertEqual(plans.launch_command(LINUX, "instance")["env"], {})
-        # `user`: emptied, which dsh reads as unset, so its ~/.dsh and ~/.agents.
-        self.assertEqual(plans.launch_command(LINUX, "user")["env"], {"DSH_HOME": "", "DSH_AGENTS_HOME": ""})
-        self.assertEqual(spec.home({}), "instance")
-        self.assertEqual(spec.home({"home": "user"}), "user")
+    def test_launch_sets_no_variable_of_its_own(self) -> None:
+        # dsh's homes and npm's configuration are each type's environment.
+        self.assertEqual(plans.launch_command(LINUX)["env"], {})
+        self.assertEqual(plans.launch_command(layout.global_prefix("linux"))["env"], {})
 
     def test_a_global_prefix_runs_its_own_npm_globally_and_nothing_else(self) -> None:
         for platform, node, npm in (
             ("linux", "{component.core}/bin/node", "{component.core}/lib/node_modules/npm/bin/npm-cli.js"),
             ("windows", "{component.core}/node.exe", "{component.core}/node_modules/npm/bin/npm-cli.js"),
         ):
-            [step] = plans.global_install_steps(layout.global_prefix(platform), {"version": "0.2.2"}, "https://r/")
+            [step] = plans.global_install_steps(layout.global_prefix(platform), {"version": "0.2.2"})
             self.assertEqual(
                 step["command"],
                 [
@@ -258,8 +255,8 @@ class PlanTest(unittest.TestCase):
                 ],
             )
             self.assertEqual(step["cwd"], "{component.core}")
-            # Nothing is written in the user's prefix: the registry is the step's.
-            self.assertEqual(step["env"], {"npm_config_registry": "https://r/"})
+            # Nothing is written in the user's prefix, and npm reads the user's configuration.
+            self.assertEqual(step["env"], {})
 
 
 class LayoutTest(unittest.TestCase):
@@ -274,40 +271,34 @@ class LayoutTest(unittest.TestCase):
             (self.root / path).parent.mkdir(parents=True, exist_ok=True)
             (self.root / path).write_text("")
 
+    def test_each_type_has_its_layout(self) -> None:
+        for platform in ("linux", "windows", "macos"):
+            self.assertEqual(layout.for_type("dsh", platform), layout.own(platform))
+            self.assertEqual(layout.for_type("dsh-global", platform), layout.global_prefix(platform))
+
     def test_a_unix_global_prefix(self) -> None:
-        self.touch("bin/node", "lib/node_modules/@deepseek-ai/dsh/package.json")
         parts = components(self.root, self.root / "bin", True, True)
-        found = layout.read(parts, "linux")
-        self.assertEqual(found, layout.global_prefix("linux"))
+        found = layout.global_prefix("linux")
         self.assertEqual(found.path(found.node, parts), self.root / "bin" / "node")
         self.assertEqual(found.path(found.dsh_prefix, parts), self.root / "lib")
-        self.assertEqual(layout.read(parts, "windows"), layout.own("windows"))
-        self.assertEqual(layout.below_root(self.root, "linux"), parts)
 
     def test_a_windows_global_prefix(self) -> None:
-        self.touch("node.exe", "node_modules/@deepseek-ai/dsh/package.json")
         parts = components(self.root, self.root / "node_modules" / "npm", True, True)
-        found = layout.read(parts, "windows")
-        self.assertEqual(found, layout.global_prefix("windows"))
+        found = layout.global_prefix("windows")
+        self.assertEqual(found.path(found.node, parts), self.root / "node.exe")
         self.assertEqual(found.path(found.npm, parts), self.root / "node_modules/npm/bin/npm-cli.js")
-        self.assertEqual(layout.below_root(self.root, "windows"), parts)
 
-    def test_a_global_prefix_without_dsh_is_still_one(self) -> None:
-        # dsh uninstalled, or a global install that stopped: the Node.js is still the user's.
-        self.touch("bin/node", "node.exe")
-        parts = components(self.root, self.root / "bin")
-        self.assertEqual(layout.read(parts, "linux"), layout.global_prefix("linux"))
-        self.assertEqual(layout.read(parts, "windows"), layout.global_prefix("windows"))
-
-    def test_everything_else_is_the_extension_own(self) -> None:
-        own = layout.below_root(self.root, "linux")
-        self.assertEqual(own, components(self.root / "core", self.root / "node"))
-        self.assertEqual(layout.read(own, "linux"), layout.own("linux"))
+    def test_a_core_holding_node_is_a_prefix_attached_by_an_earlier_version(self) -> None:
+        own = components(self.root / "core", self.root / "node")
         self.touch("node/bin/node", "node/node.exe", "core/node_modules/@deepseek-ai/dsh/package.json")
-        self.assertEqual(layout.read(own, "linux"), layout.own("linux"))
-        self.assertEqual(layout.read(own, "windows"), layout.own("windows"))
-        found = layout.own("linux")
-        self.assertEqual(found.path(found.node, own), self.root / "node" / "bin" / "node")
+        self.assertFalse(layout.holds_node_program(own, "linux"))
+        self.assertFalse(layout.holds_node_program(own, "windows"))
+        legacy = components(self.root, self.root / "bin")
+        self.touch("bin/node")
+        self.assertTrue(layout.holds_node_program(legacy, "linux"))
+        self.assertFalse(layout.holds_node_program(legacy, "windows"))
+        self.touch("node.exe")
+        self.assertTrue(layout.holds_node_program(legacy, "windows"))
 
     def test_the_components_the_host_sends(self) -> None:
         elsewhere = self.root / "elsewhere"
@@ -322,9 +313,8 @@ class LayoutTest(unittest.TestCase):
         parts = layout.components(sent)
         self.assertEqual(parts, components(self.root / "core", elsewhere, False, True))
         assert parts is not None
-        self.assertEqual(layout.components({"components": parts.to_protocol()}), parts)
         # The user's Node.js in `node` is still the own layout: its program is `<node>/bin/node`.
-        found = layout.read(parts, "linux")
+        found = layout.own("linux")
         self.assertEqual(found.path(found.node, parts), elsewhere / "bin" / "node")
         self.assertIsNone(layout.components({"id": "dsh-1"}))
         self.assertIsNone(layout.components({"components": {"core": {"path": "a"}}}))

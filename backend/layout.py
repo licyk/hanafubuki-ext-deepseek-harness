@@ -1,18 +1,17 @@
 """Where an instance's dsh and Node.js are: its components, and the plan templates that name them.
 
-The host gives each provider call the instance's components
-(``ProviderInstance.components``: each one's path and whether it is
-external, a folder of the user's). The layout is read from what ``core``
-holds; each kind's templates name components as its discovery signature
-(``types/dsh.toml``) maps them:
+The host gives each provider call, and each instance it lists, the
+instance's components (``components``: each one's path and whether it is
+external, a folder of the user's). Each type has its layout, and its
+templates name components as its discovery signatures map them:
 
-- **own**: what this extension installs: ``core`` (an npm project holding
-  dsh) and ``node`` (the Node.js it downloaded, or the user's own when
-  ``node`` is external).
-- **global prefix**: a Node.js prefix where dsh was installed with
-  ``npm install --global``, attached by discovery with ``core`` as the
-  prefix itself: ``bin/node`` and ``lib/node_modules`` on Unix,
-  ``node.exe`` and ``node_modules`` on Windows. The host refuses a
+- ``dsh`` (**own**): what this extension installs: ``core`` (an npm project
+  holding dsh) and ``node`` (the Node.js it downloaded, or the user's own
+  when ``node`` is external).
+- ``dsh-global`` (**global prefix**): a Node.js prefix where dsh was
+  installed with ``npm install --global``, attached by discovery with
+  ``core`` as the prefix itself: ``bin/node`` and ``lib/node_modules`` on
+  Unix, ``node.exe`` and ``node_modules`` on Windows. The host refuses a
   ``node`` equal to ``core``, so ``node`` is a folder inside the prefix
   and these templates address Node.js through ``core``. That Node.js is
   the user's: no plan downloads, replaces or empties it.
@@ -42,13 +41,6 @@ class Components:
     core: Component
     node: Component
 
-    def to_protocol(self) -> dict[str, dict[str, Any]]:
-        """The ``components`` object the host sends."""
-        return {
-            name: {"path": str(component.path), "external": component.external}
-            for name, component in (("core", self.core), ("node", self.node))
-        }
-
 
 def components(instance: Any) -> Components | None:
     """``instance.components`` as the host sends it; ``None`` when it names no ``core`` or ``node``."""
@@ -62,15 +54,6 @@ def components(instance: Any) -> Components | None:
             return None
         parts[name] = Component(Path(entry["path"]), entry.get("external") is True)
     return Components(parts["core"], parts["node"])
-
-
-def below_root(root: Path, platform: str) -> Components:
-    """The components of an instance at ``root`` when nothing else says: what its discovery signature maps."""
-    prefix = global_prefix(platform)
-    if (root / prefix.node.removeprefix("{component.core}/")).is_file():
-        node = root / ("node_modules/npm" if platform == "windows" else "bin")
-        return Components(Component(root, True), Component(node, True))
-    return Components(Component(root / "core"), Component(root / "node"))
 
 
 @dataclass(frozen=True)
@@ -114,15 +97,20 @@ def global_prefix(platform: str) -> Layout:
     )
 
 
-def read(found: Components, platform: str) -> Layout:
-    """The layout of an instance: a global prefix when ``core`` holds the node program, else its own.
+GLOBAL_TYPE = "dsh-global"
 
-    The node program alone decides, with or without dsh: a prefix whose dsh
-    was uninstalled, or whose global install stopped half-way, is still the
-    user's Node.js. The extension's own layout keeps it in ``node``, never
-    in ``core``.
+
+def for_type(type_name: str, platform: str) -> Layout:
+    """The layout of the type ``type_name`` (``dsh`` or ``dsh-global``)."""
+    return global_prefix(platform) if type_name == GLOBAL_TYPE else own(platform)
+
+
+def holds_node_program(found: Components, platform: str) -> bool:
+    """Whether ``core`` holds a node program, as a global prefix does and this extension's ``core`` never does.
+
+    A ``dsh`` instance like that is a global prefix an earlier version of
+    the extension attached as ``dsh``, with ``node`` owned: a plan for it
+    would unpack Node.js over the prefix's ``bin``.
     """
     candidate = global_prefix(platform)
-    if candidate.path(candidate.node, found).is_file():
-        return candidate
-    return own(platform)
+    return candidate.path(candidate.node, found).is_file()

@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import Any
 
 import layout
-import plans
 from tests.support import ROOT
 
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -28,8 +27,8 @@ def manifest() -> dict[str, Any]:
     return tomllib.loads((ROOT / "hanafubuki-extension.toml").read_text(encoding="utf-8"))
 
 
-def descriptor() -> dict[str, Any]:
-    return tomllib.loads((ROOT / "types" / "dsh.toml").read_text(encoding="utf-8"))
+def descriptor(name: str = "dsh") -> dict[str, Any]:
+    return tomllib.loads((ROOT / "types" / f"{name}.toml").read_text(encoding="utf-8"))
 
 
 def flatten(strings: dict[str, Any], prefix: str = "") -> dict[str, str]:
@@ -50,7 +49,7 @@ class ManifestTest(unittest.TestCase):
     def test_manifest(self) -> None:
         document = manifest()
         self.assertEqual(document["id"], EXTENSION_ID)
-        self.assertEqual(document["engines"], {"hanafubuki": ">=0.3.30, <0.4", "api": 1})
+        self.assertEqual(document["engines"], {"hanafubuki": ">=0.3.31, <0.4", "api": 1})
         self.assertEqual(document["backend"], {"python": "backend/main.py", "sdWebuiAllInOne": True})
         self.assertTrue((ROOT / document["backend"]["python"]).is_file())
         self.assertEqual(document["permissions"]["instances"], "own-types")
@@ -58,22 +57,25 @@ class ManifestTest(unittest.TestCase):
 
     def test_every_contributed_path_exists(self) -> None:
         contributes = manifest()["contributes"]
-        self.assertEqual(sorted(path.name for path in ROOT.glob(contributes["instanceTypes"])), ["dsh.toml"])
+        self.assertEqual(
+            sorted(path.name for path in ROOT.glob(contributes["instanceTypes"])), ["dsh-global.toml", "dsh.toml"]
+        )
         self.assertTrue((ROOT / contributes["settings"]).is_file())
         for name in ("en", "zh"):
             self.assertTrue((ROOT / contributes["locales"].replace("{locale}", name)).is_file())
         for entry in contributes["ui"]:
             self.assertTrue((ROOT / entry["entry"]).is_file(), entry)
-        self.assertTrue((ROOT / descriptor()["preview"]).is_file())
+        for name in ("dsh", "dsh-global"):
+            self.assertTrue((ROOT / descriptor(name)["preview"]).is_file())
         for script in ("launch.py", "start-dsh.mjs", "intercept.mjs", "open-stub.mjs"):
             self.assertTrue((ROOT / "launcher" / script).is_file(), script)
 
     def test_type(self) -> None:
         document = descriptor()
-        self.assertEqual(document["provider"], "backend")
+        self.assertEqual((document["name"], document["provider"]), ("dsh", "backend"))
         core, node = document["components"]
-        self.assertEqual((core["name"], core["external"]), ("core", "allowed"))
-        self.assertNotIn("executable", core)
+        self.assertEqual(core["name"], "core")
+        self.assertNotIn("external", core)
         self.assertEqual((node["name"], node["external"]), ("node", "allowed"))
         # The program the Paths panel picks: Node's own layout, as the backend's plans address it.
         self.assertEqual(node["executable"], {"unix": "bin/node", "windows": "node.exe"})
@@ -84,19 +86,29 @@ class ManifestTest(unittest.TestCase):
         self.assertEqual(document["runtime"], {"kind": "none"})
         self.assertEqual(document["management"]["operations"], ["update", "terminal", "copy-user-home"])
         self.assertNotIn("steps", document.get("install", {}))
-        [server] = document["servers"]
-        self.assertEqual(server["role"], "web")
-        self.assertNotIn("command", server)
-        self.assertEqual(server["readiness"], {"captured": True, "timeoutSeconds": 180})
-        self.assertEqual(server["port"], {"allocate": True})
-        self.assertTrue(server["webview"])
-        self.assertEqual(server["restart"], "on-failure")
+        self.assert_web_server(document)
         defaults = {parameter["name"]: parameter["default"] for parameter in document["install"]["parameters"]}
-        self.assertEqual(defaults, {"version": "latest", "nodeVersion": "24", "home": "instance"})
-        [home] = [parameter for parameter in document["install"]["parameters"] if parameter["name"] == "home"]
-        self.assertEqual([option["value"] for option in home["options"]], ["instance", "user"])
-        own, unix, windows = document["discovery"]
+        self.assertEqual(defaults, {"version": "latest", "nodeVersion": "24"})
+        [own] = document["discovery"]
         self.assertEqual(own["markers"], ["core/node_modules/@deepseek-ai/dsh/package.json", "node"])
+        self.assertNotIn("components", own)
+        self.assertNotIn("external", own)
+
+    def test_global_type(self) -> None:
+        document = descriptor("dsh-global")
+        self.assertEqual((document["name"], document["provider"]), ("dsh-global", "backend"))
+        core, node = document["components"]
+        self.assertEqual((core["name"], core["external"]), ("core", "allowed"))
+        self.assertEqual((node["name"], node["external"]), ("node", "allowed"))
+        # Its `node` is a folder inside the prefix, which holds no `bin/node`.
+        self.assertNotIn("executable", node)
+        self.assertEqual(document["management"]["operations"], ["update", "terminal"])
+        self.assert_web_server(document)
+        defaults = {parameter["name"]: parameter["default"] for parameter in document["install"]["parameters"]}
+        self.assertEqual(defaults, {"version": "latest"})
+        # The user's own dsh: no isolation at all, only the prefix's programs on PATH.
+        self.assertEqual(document["environment"], {"path": ["{component.core}/bin", "{component.core}"]})
+        unix, windows = document["discovery"]
         self.assertEqual(unix["markers"], ["bin/node", "lib/node_modules/@deepseek-ai/dsh/package.json"])
         self.assertEqual(unix["components"], {"core": ".", "node": "bin"})
         self.assertEqual(
@@ -104,11 +116,19 @@ class ManifestTest(unittest.TestCase):
             ["node.exe", "node_modules/@deepseek-ai/dsh/package.json", "node_modules/npm/package.json"],
         )
         self.assertEqual(windows["components"], {"core": ".", "node": "node_modules/npm"})
-        self.assertNotIn("external", own)
         for signature in (unix, windows):
-            # The prefix is the user's Node.js: never deleted with the instance, and its dsh's home is ~/.dsh.
+            # The prefix is the user's Node.js: never deleted with the instance.
             self.assertEqual(signature["external"], ["core", "node"])
-            self.assertEqual(signature["values"], {**defaults, "home": "user"})
+            self.assertEqual(signature["values"], defaults)
+
+    def assert_web_server(self, document: dict[str, Any]) -> None:
+        [server] = document["servers"]
+        self.assertEqual(server["role"], "web")
+        self.assertNotIn("command", server)
+        self.assertEqual(server["readiness"], {"captured": True, "timeoutSeconds": 180})
+        self.assertEqual(server["port"], {"allocate": True})
+        self.assertTrue(server["webview"])
+        self.assertEqual(server["restart"], "on-failure")
 
     def test_environment_isolates_npm_node_and_dsh(self) -> None:
         environment = descriptor()["environment"]
@@ -125,11 +145,10 @@ class ManifestTest(unittest.TestCase):
                 "DSH_AGENTS_HOME": "{instance.root}/agents-home",
             },
         )
-        path = environment["path"]
         # dsh by name is the instance's: its packages' programs come before
         # everything; the prefix's global programs before Node's own.
         self.assertEqual(
-            path,
+            environment["path"],
             [
                 "{component.core}/node_modules/.bin",
                 "{component.core}/bin",
@@ -138,18 +157,14 @@ class ManifestTest(unittest.TestCase):
                 "{component.node}/bin",
             ],
         )
-        self.assertLess(path.index("{component.core}/node_modules/.bin"), path.index("{component.core}"))
-        # The homes the launch plan's `user` empties are the ones the environment sets.
-        user = plans.launch_command(layout.own("linux"), "user")["env"]
-        self.assertEqual(set(user), {name for name in environment["vars"] if name.startswith("DSH_")})
 
-    def test_each_signature_is_the_layout_the_backend_reads(self) -> None:
+    def test_each_signature_is_the_layout_its_type_plans_for(self) -> None:
         # A tree holding just a signature's markers: the host attaches its root with
-        # those components, and the backend's plans for those components name what is there.
-        expected = {0: ("linux", False), 1: ("linux", True), 2: ("windows", True)}
-        for index, signature in enumerate(descriptor()["discovery"]):
-            platform, global_prefix = expected[index]
-            with self.subTest(signature=index), tempfile.TemporaryDirectory() as directory:
+        # those components, and the type's plans for those components name what is there.
+        cases = [("dsh", 0, "linux"), ("dsh-global", 0, "linux"), ("dsh-global", 1, "windows")]
+        for name, index, platform in cases:
+            signature = descriptor(name)["discovery"][index]
+            with self.subTest(type=name, signature=index), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 for marker in signature["markers"]:
                     (root / marker).parent.mkdir(parents=True, exist_ok=True)
@@ -158,9 +173,9 @@ class ManifestTest(unittest.TestCase):
                     else:
                         (root / marker).write_text("{}")
                 mapped = {"core": "core", "node": "node", **signature.get("components", {})}
-                paths = {name: (root / path).resolve() for name, path in mapped.items()}
-                for name, path in paths.items():
-                    self.assertTrue(path.is_dir(), name)
+                paths = {part: (root / path).resolve() for part, path in mapped.items()}
+                for part, path in paths.items():
+                    self.assertTrue(path.is_dir(), part)
                 # The host's rule (InstancePathPolicy::validate_component_layout): no
                 # component equals another, only `core` may be the root, and another
                 # lies inside it only then. So a prefix's `node` cannot be the prefix.
@@ -176,13 +191,11 @@ class ManifestTest(unittest.TestCase):
                     layout.Component(paths["core"], "core" in external),
                     layout.Component(paths["node"], "node" in external),
                 )
-                kind = layout.read(sent, platform)
-                self.assertEqual(kind.global_prefix, global_prefix)
-                # What the backend falls back to for a root no provider call described.
-                self.assertEqual(layout.below_root(root.resolve(), platform), sent)
-                if global_prefix:
+                kind = layout.for_type(name, platform)
+                self.assertEqual(layout.holds_node_program(sent, platform), name == "dsh-global")
+                self.assertTrue((kind.path(kind.dsh_prefix, sent) / layout.PACKAGE_JSON).is_file())
+                if name == "dsh-global":
                     self.assertTrue(kind.path(kind.node, sent).is_file())
-                    self.assertTrue((kind.path(kind.dsh_prefix, sent) / layout.PACKAGE_JSON).is_file())
 
     def test_preview_is_a_16_9_png(self) -> None:
         data = (ROOT / descriptor()["preview"]).read_bytes()
@@ -198,7 +211,11 @@ class StringsTest(unittest.TestCase):
 
     def test_every_key_used_is_defined(self) -> None:
         used = set()
-        for path in (ROOT / "types" / "dsh.toml", ROOT / "schemas" / "settings.json"):
+        for path in (
+            ROOT / "types" / "dsh.toml",
+            ROOT / "types" / "dsh-global.toml",
+            ROOT / "schemas" / "settings.json",
+        ):
             used |= set(KEY.findall(path.read_text(encoding="utf-8")))
         self.assertTrue(used)
         for name in ("en", "zh"):
@@ -246,6 +263,7 @@ class PackageTest(unittest.TestCase):
         for required in (
             "hanafubuki-extension.toml",
             "types/dsh.toml",
+            "types/dsh-global.toml",
             "locales/en.json",
             "locales/zh.json",
             "schemas/settings.json",
