@@ -1,7 +1,7 @@
 {
   "type": {
     "name": "DeepSeek Harness",
-    "description": "DeepSeek 的智能体框架（dsh）及其网页界面，用 npm 安装在独立的 Node.js 上。"
+    "description": "DeepSeek 的智能体框架（dsh）及其网页界面，用 npm 安装在独立的 Node.js（或你自己的 Node.js）上，使用独立的 npm 配置和 dsh 主目录。"
   },
   "components": {
     "core": "DeepSeek Harness",
@@ -11,7 +11,9 @@
     "version": "dsh 版本",
     "versionHelp": "npm 发布标签（latest、next、alpha）或确切版本，例如 0.2.2。",
     "nodeVersion": "Node.js 版本",
-    "nodeVersionHelp": "主版本号（24）、lts，或确切版本，例如 24.9.1。dsh 需要 Node.js 24.9.0 或更高版本。"
+    "nodeVersionHelp": "主版本号（24）、lts、latest，或确切版本，例如 24.9.1；更新时选用它所指的最新发行版。dsh 需要 Node.js 24.9.0 或更高版本。使用你自己的 Node.js 时不使用此项。",
+    "home": "dsh 主目录",
+    "homeHelp": "dsh 保存配置档案、登录和会话的位置：此实例内（其文件夹中的 dsh-home 和 agents-home），或本机所有 dsh 共用的 ~/.dsh 和 ~/.agents。"
   },
   "settings": {
     "npmRegistry": "npm 源",
@@ -21,7 +23,7 @@
   },
   "issues": {
     "version": "请使用 npm 发布标签（latest、next、alpha）或确切版本，例如 0.2.2。",
-    "nodeVersion": "请使用主版本号（24 或更高）、lts，或确切版本，例如 24.9.1。",
+    "nodeVersion": "请使用主版本号（24 或更高）、lts、latest，或确切版本，例如 24.9.1。",
     "nodeTooOld": "dsh 需要 Node.js 24.9.0 或更高版本。"
   },
   "frame": {
@@ -38,15 +40,45 @@
     "showPrereleases": "显示预发布版本",
     "showAll": "显示全部 {count} 个",
     "nodeVersion": "Node.js 版本",
-    "nodeVersionHelp": "主版本号（24）、lts，或确切版本。在下次切换或更新时生效。",
+    "nodeVersionHelp": "主版本号（24）、lts、latest，或确切版本。更新时选用它所指的最新发行版。",
     "apply": "使用此 Node.js 更新",
-    "nodeUnmanaged": "此 DeepSeek Harness 是用 npm --global 安装在你自己的 Node.js 中的。切换版本会使用该 Node.js 的 npm；Hanafubuki 不会更改这个 Node.js 本身。",
+    "nodeUnmanaged": "此 DeepSeek Harness 是用 npm --global 安装在你自己的 Node.js 中的。切换版本会使用该 Node.js 的 npm；Hanafubuki 不会更改这个 Node.js 本身，删除实例时也不会删除它。",
     "refresh": "刷新",
     "loading": "加载中…",
     "registry": "源",
     "confirmHint": "切换会用 npm 重新安装 dsh；Hanafubuki 会先请你确认。",
     "started": "更新已开始；进度显示在实例中。",
     "unsupported": "此版本的 Hanafubuki 无法从此页面更新实例。请在实例的维护区域中修改版本。",
-    "running": "请先停止实例再切换版本。"
+    "running": "请先停止实例再切换版本。",
+    "nodeOwn": "你自己的（{version}）",
+    "nodePrefix": "使用系统的 Node.js 和 dsh（{prefix}）。",
+    "nodeExternal": "此实例运行你自己的 Node.js（{path}）。Hanafubuki 不会向其中下载或更改它；在实例的路径中改用托管的 Node.js，即可由 Hanafubuki 管理。",
+    "home": "dsh 主目录",
+    "homeInstance": "此实例独立（{path}）",
+    "homeUser": "与所有 dsh 共享（~/.dsh）",
+    "useUserHome": "共享 ~/.dsh",
+    "useInstanceHome": "改用实例独立的",
+    "homeHint": "更改主目录会用 npm 重新安装 dsh。实例独立的主目录不包含 ~/.dsh 中的登录和会话。",
+    "copyHome": "从 ~/.dsh 复制",
+    "copyHomeHint": "将你的 ~/.dsh 和 ~/.agents（配置档案、登录、会话）复制到此实例的主目录；不会移动任何文件，已有的文件会保留。"
+  },
+  "homes": {
+    "instance": "此实例独立",
+    "user": "共享（~/.dsh）"
+  },
+  "operations": {
+    "copy-user-home": "从 ~/.dsh 复制"
+  },
+  "notices": {
+    "nodeUnreadable": "所选的 Node.js 无法回应 `--version`：{program}。请在实例的路径中选择一个 bin/node（Windows 上为 node.exe）可运行的文件夹，或改用托管的 Node.js。",
+    "nodeOwnTooOld": "所选的 Node.js 为 {version}（{program}）；dsh 需要 24.9.0 或更高版本。请在实例的路径中选择更新的版本，或改用托管的 Node.js。",
+    "npmMissing": "所选的 Node.js（{program}）在 {npm} 没有 npm（Node.js 发行版自带的 npm 位于此处）。请在实例的路径中选择带有 npm 的 Node.js，或改用托管的 Node.js。",
+    "copyTitle": "正在将 ~/.dsh 复制到实例",
+    "copyStarted": "正在将 ~/.dsh 和 ~/.agents 复制到实例的主目录。已有的文件会保留。",
+    "copyDone": "已从 ~/.dsh 和 ~/.agents 复制 {count} 个文件到实例的主目录。",
+    "copyFailed": "将 ~/.dsh 复制到实例的主目录失败：{error}",
+    "copyRunning": "请先停止实例，再将 ~/.dsh 复制进去。",
+    "copyNothing": "没有可复制的 ~/.dsh 或 ~/.agents。",
+    "copyBusy": "正在将 ~/.dsh 复制到此实例。"
   }
 }

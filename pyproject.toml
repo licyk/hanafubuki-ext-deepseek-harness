@@ -9,7 +9,7 @@ src = ["backend", "launcher", "scripts", "."]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["main", "node_release", "plans", "remote", "spec", "launch", "empty_dir", "tests"]
+known-first-party = ["main", "home", "known", "layout", "node_release", "plans", "remote", "spec", "launch", "tests"]
 known-third-party = ["hanafubuki_extension", "sd_webui_all_in_one", "sd_webui_all_in_one_hotpatcher"]
 
 [tool.pytest.ini_options]

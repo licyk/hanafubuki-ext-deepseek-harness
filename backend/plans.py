@@ -1,8 +1,10 @@
 """The steps and commands the backend plans for the host, as templates.
 
 The host resolves the placeholders (``{component.node}``, ``{host.python}``,
-``{extension.root}``, ``{port}``) and runs what is planned; text the backend
-did not write itself has its braces doubled so it stays literal.
+``{extension.root}``, ``{port}``), gives each step and the server the
+type's ``[environment]`` (npm's configuration and dsh's homes,
+``types/dsh.toml``) and runs what is planned; text the backend did not
+write itself has its braces doubled so it stays literal.
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ PACKAGE = "@deepseek-ai/dsh"
 # Written last by every install and update of the extension's own layout, so
 # it names what is installed.
 MARKER = "hanafubuki-install.txt"
+NPMRC = ".npmrc"
 
 
 @dataclass(frozen=True)
@@ -44,14 +47,13 @@ def read_marker(core: Path) -> Marker | None:
     return Marker(fields.get("version", ""), fields.get("nodeVersion", ""), fields.get("node", ""))
 
 
-def keeps_node(kind: str, values: dict[str, object], marker: Marker | None, node_program: Path) -> bool:
-    """Whether an update keeps the instance's Node.js: same ``nodeVersion``, and its program is there."""
-    return (
-        kind == "update"
-        and marker is not None
-        and marker.node_version == node_version(values)
-        and node_program.is_file()
-    )
+def keeps_node(kind: str, marker: Marker | None, release: str, node_program: Path) -> bool:
+    """Whether an update keeps the instance's Node.js: it is the release ``nodeVersion`` resolves to now.
+
+    The marker records the exact release an install got, so an update of
+    ``24`` downloads a newer 24.x once the index lists one.
+    """
+    return kind == "update" and marker is not None and marker.node == release and node_program.is_file()
 
 
 def install_steps(
@@ -59,17 +61,16 @@ def install_steps(
     values: dict[str, object],
     node: NodeRelease | None,
     node_text: str,
-    clean_node: bool = False,
     registry: str = "",
 ) -> list[dict[str, Any]]:
-    """The own layout's plan: Node.js when ``node`` is given (emptying ``node`` first with ``clean_node``), then npm.
+    """The own layout's plan: Node.js when ``node`` is given, the instance's npm configuration, npm, the marker.
 
     Args:
         layout: The instance's layout, the extension's own.
         values: The install parameters' values.
-        node: The release to download, or ``None`` to keep the instance's.
+        node: The release to download, or ``None`` to keep the Node.js there
+            (the instance's, or the user's own in an external ``node``).
         node_text: The Node.js version the instance has once the plan ran.
-        clean_node: Empty ``node`` first: an archive unpacks over what is there.
         registry: The npm registry, empty for npm's default.
 
     Returns:
@@ -77,14 +78,8 @@ def install_steps(
     """
     steps: list[dict[str, Any]] = []
     if node is not None:
-        if clean_node:
-            steps.append(
-                {
-                    "kind": "run",
-                    "command": ["{host.python}", "{extension.root}/launcher/empty_dir.py", "{component.node}"],
-                    "cwd": "{component.node}",
-                }
-            )
+        # `replace`: the new Node.js is unpacked beside the old one and swapped
+        # in whole, so a failed download keeps the working one.
         steps.append(
             {
                 "kind": "download",
@@ -92,22 +87,41 @@ def install_steps(
                 "sha256": node.sha256,
                 "unpackTo": "{component.node}",
                 "strip": 1,
+                "replace": True,
             }
         )
-    # `core` does not exist before the first install; npm creates it.
-    steps.append(_npm_install(layout, [], values, registry, cwd="{component.node}"))
+    # The type's environment points npm's user configuration here, never at
+    # the user's ~/.npmrc. Writing it creates `core` on a first install.
+    steps.append({"kind": "write-file", "path": f"{{component.core}}/{NPMRC}", "content": literal(npmrc(registry))})
+    steps.append(_npm_install(layout, [], values, {}, cwd="{component.node}"))
     marker = Marker(dsh_version(values), node_version(values), node_text)
     steps.append({"kind": "write-file", "path": f"{{component.core}}/{MARKER}", "content": literal(marker.text())})
     return steps
 
 
+def npmrc(registry: str) -> str:
+    """The instance's npm user configuration: the registry setting, when there is one."""
+    text = "# Written by Hanafubuki's DeepSeek Harness extension at each install and update.\n"
+    return text + (f"registry={registry}\n" if registry else "")
+
+
 def global_install_steps(layout: Layout, values: dict[str, object], registry: str = "") -> list[dict[str, Any]]:
-    """A global prefix's plan: dsh with the prefix's own npm, globally; Node.js and the prefix are left as they are."""
-    return [_npm_install(layout, ["--global"], values, registry, cwd="{component.core}")]
+    """A global prefix's plan: dsh with the prefix's own npm, globally; Node.js and the prefix are left as they are.
+
+    Nothing is written in the user's prefix: the registry is the step's.
+    """
+    env = {"npm_config_registry": literal(registry)} if registry else {}
+    return [_npm_install(layout, ["--global"], values, env, cwd="{component.core}")]
 
 
-def launch_command(layout: Layout) -> dict[str, Any]:
-    """The ``web`` role's command: the launcher on the managed Python, which runs dsh."""
+def launch_command(layout: Layout, home: str) -> dict[str, Any]:
+    """The ``web`` role's command: the launcher on the managed Python, which runs dsh.
+
+    The type's environment gives dsh the instance's own homes; with
+    ``home = user`` they are emptied here, which dsh reads as unset: its
+    ``~/.dsh`` and ``~/.agents``.
+    """
+    env = {"DSH_HOME": "", "DSH_AGENTS_HOME": ""} if home == "user" else {}
     return {
         "argv": [
             "{host.python}",
@@ -119,7 +133,7 @@ def launch_command(layout: Layout) -> dict[str, Any]:
             "--port",
             "{port}",
         ],
-        "env": {},
+        "env": env,
     }
 
 
@@ -129,8 +143,7 @@ def literal(text: str) -> str:
 
 
 def _npm_install(
-    layout: Layout, options: list[str], values: dict[str, object], registry: str, cwd: str
+    layout: Layout, options: list[str], values: dict[str, object], env: dict[str, str], cwd: str
 ) -> dict[str, Any]:
-    env = {"npm_config_registry": literal(registry)} if registry else {}
     command = [layout.node, layout.npm, "install", *options, "--prefix", "{component.core}", "--no-fund", "--no-audit"]
     return {"kind": "run", "command": [*command, f"{PACKAGE}@{dsh_version(values)}"], "cwd": cwd, "env": env}

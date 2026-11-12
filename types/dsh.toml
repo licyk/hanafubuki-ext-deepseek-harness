@@ -5,18 +5,46 @@ provider = "backend"
 displayName = { key = "ext.io.github.licyk.deepseek-harness.type.name" }
 description = { key = "ext.io.github.licyk.deepseek-harness.type.description" }
 preview = "images/preview.png"
+# `node` may be a Node.js of the user's (the Paths panel's "use an existing
+# one"): its program is `bin/node` (`node.exe` on Windows), npm beside it,
+# and no plan downloads into it. `core` may be external only as an attached
+# global prefix (below).
 components = [
-  { name = "core", label = { key = "ext.io.github.licyk.deepseek-harness.components.core" } },
-  { name = "node", label = { key = "ext.io.github.licyk.deepseek-harness.components.node" } },
+  { name = "core", label = { key = "ext.io.github.licyk.deepseek-harness.components.core" }, external = "allowed" },
+  { name = "node", label = { key = "ext.io.github.licyk.deepseek-harness.components.node" }, external = "allowed", executable = { unix = "bin/node", windows = "node.exe" } },
 ]
 runtime = { kind = "none" }
 
+# For the install's npm, the server and the terminal alike: nothing of the
+# user's npm configuration, Node.js options or module path; npm's user
+# configuration is `core/.npmrc` (the plans write the registry setting
+# there), its global prefix `core` and its cache the instance's; dsh's
+# homes are the instance's (the launch plan empties them for `home = user`,
+# which dsh reads as `~/.dsh` and `~/.agents`).
+#
+# PATH: dsh and the other programs of its packages (`node_modules/.bin`),
+# then what `npm install --global` puts in the prefix (`core/bin` on Unix,
+# `core` itself on Windows, where a global prefix also holds Node.js), then
 # Node's own layout: `node.exe` and `npm.cmd` at its root on Windows,
-# `bin/node` and `bin/npm` elsewhere. `core` last: in a Windows global
-# prefix (below) Node.js and the global commands are there.
+# `bin/node` and `bin/npm` elsewhere.
 [environment]
-path = ["{component.node}", "{component.node}/bin", "{component.core}"]
-vars = { NPM_CONFIG_UPDATE_NOTIFIER = "false" }
+unset = ["npm_config_*", "NPM_CONFIG_*", "NODE_OPTIONS", "NODE_PATH"]
+path = [
+  "{component.core}/node_modules/.bin",
+  "{component.core}/bin",
+  "{component.core}",
+  "{component.node}",
+  "{component.node}/bin",
+]
+
+[environment.vars]
+npm_config_userconfig = "{component.core}/.npmrc"
+npm_config_globalconfig = "{component.node}/etc/npmrc"
+npm_config_prefix = "{component.core}"
+npm_config_cache = "{instance.root}/.npm-cache"
+npm_config_update_notifier = "false"
+DSH_HOME = "{instance.root}/dsh-home"
+DSH_AGENTS_HOME = "{instance.root}/agents-home"
 
 [[install.parameters]]
 name = "version"
@@ -33,8 +61,24 @@ help = { key = "ext.io.github.licyk.deepseek-harness.parameters.nodeVersionHelp"
 default = "24"
 advanced = true
 
+# `instance`: dsh keeps its profiles, credentials and sessions in the
+# instance (`dsh-home`, `agents-home`); `user`: the user's `~/.dsh` and
+# `~/.agents`, shared with any other dsh.
+[[install.parameters]]
+name = "home"
+kind = "select"
+label = { key = "ext.io.github.licyk.deepseek-harness.parameters.home" }
+help = { key = "ext.io.github.licyk.deepseek-harness.parameters.homeHelp" }
+default = "instance"
+advanced = true
+options = [
+  { value = "instance", label = { key = "ext.io.github.licyk.deepseek-harness.homes.instance" } },
+  { value = "user", label = { key = "ext.io.github.licyk.deepseek-harness.homes.user" } },
+]
+
 [management]
-operations = ["update", "terminal"]
+# `copy-user-home`: copies `~/.dsh` and `~/.agents` into the instance's homes.
+operations = ["update", "terminal", "copy-user-home"]
 
 [[servers]]
 role = "web"
@@ -51,19 +95,23 @@ markers = ["core/node_modules/@deepseek-ai/dsh/package.json", "node"]
 # A Node.js prefix where dsh was installed with `npm install --global`, its
 # Node.js the user's (backend/layout.py). `core` is the prefix itself: the
 # host refuses a component equal to the root unless it is `core`, and only
-# then lets another lie inside it; a forced reinstall cannot remove such a
-# `core` either. `node` is a directory inside the prefix the host asks for;
-# plans address Node.js through `core`. The values are the parameters'
-# defaults: nothing on disk says which dist-tag was installed.
+# then lets another lie inside it. Both are external, so deleting the
+# instance or reinstalling it never removes the user's Node.js. `node`
+# cannot be the prefix (it would equal `core`), so it is a directory inside
+# it and plans address Node.js through `core`. The values are the
+# parameters' defaults (nothing on disk says which dist-tag was
+# installed), with dsh's home the user's, as the prefix's own dsh has it.
 #
 # Unix: `bin/node`, `lib/node_modules`.
 [[discovery]]
 markers = ["bin/node", "lib/node_modules/@deepseek-ai/dsh/package.json"]
 components = { core = ".", node = "bin" }
-values = { version = "latest", nodeVersion = "24" }
+external = ["core", "node"]
+values = { version = "latest", nodeVersion = "24", home = "user" }
 
 # Windows: `node.exe` and `node_modules` at the prefix's root.
 [[discovery]]
 markers = ["node.exe", "node_modules/@deepseek-ai/dsh/package.json", "node_modules/npm/package.json"]
 components = { core = ".", node = "node_modules/npm" }
-values = { version = "latest", nodeVersion = "24" }
+external = ["core", "node"]
+values = { version = "latest", nodeVersion = "24", home = "user" }

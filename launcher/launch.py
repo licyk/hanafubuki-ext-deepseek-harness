@@ -12,6 +12,14 @@ which makes the role ready and is the page the WebView shows. dsh's
 seconds. The dsh tree runs under ``sd_webui_all_in_one``'s process tree, so
 it ends with this launcher: SIGTERM, SIGHUP or CTRL_BREAK stops it.
 
+dsh's environment is the one the host gives this launcher, which already
+holds what isolates the instance (the type's ``[environment]``: npm's
+configuration, ``DSH_HOME`` and ``DSH_AGENTS_HOME``, the instance's
+``PATH``, and none of the user's ``npm_config_*``, ``NODE_OPTIONS`` or
+``NODE_PATH``); the launcher derives no path of its own, takes ``--core``
+and ``--node`` as the plan resolved them, and only drops its own Python's
+variables and adds the hook.
+
 Usage: launch.py --core <npm prefix> --node <node program> --port <port>
 """
 

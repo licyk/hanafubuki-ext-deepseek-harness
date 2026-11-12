@@ -1,26 +1,76 @@
-"""Where an instance's dsh and Node.js are, as plan templates and as paths below its root.
+"""Where an instance's dsh and Node.js are: its components, and the plan templates that name them.
 
-The host gives a backend an instance's root only, so the layout is read
-from what the root holds; each kind's templates name components as its
-discovery signature (``types/dsh.toml``) maps them:
+The host gives each provider call the instance's components
+(``ProviderInstance.components``: each one's path and whether it is
+external, a folder of the user's). The layout is read from what ``core``
+holds; each kind's templates name components as its discovery signature
+(``types/dsh.toml``) maps them:
 
 - **own**: what this extension installs: ``core`` (an npm project holding
-  dsh) and ``node`` (the Node.js it downloaded), both below the root.
+  dsh) and ``node`` (the Node.js it downloaded, or the user's own when
+  ``node`` is external).
 - **global prefix**: a Node.js prefix where dsh was installed with
   ``npm install --global``, attached by discovery with ``core`` as the
   prefix itself: ``bin/node`` and ``lib/node_modules`` on Unix,
-  ``node.exe`` and ``node_modules`` on Windows. Its ``node`` component is
-  a directory inside the prefix (the host refuses one equal to the root),
-  so these templates address Node.js through ``core``. That Node.js is the
-  user's: no plan downloads, replaces or empties it.
+  ``node.exe`` and ``node_modules`` on Windows. The host refuses a
+  ``node`` equal to ``core``, so ``node`` is a folder inside the prefix
+  and these templates address Node.js through ``core``. That Node.js is
+  the user's: no plan downloads, replaces or empties it.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 PACKAGE_JSON = Path("node_modules") / "@deepseek-ai" / "dsh" / "package.json"
+
+
+@dataclass(frozen=True)
+class Component:
+    """One component: its folder, and whether it is the user's (external) rather than the instance's."""
+
+    path: Path
+    external: bool = False
+
+
+@dataclass(frozen=True)
+class Components:
+    """The type's two components, as the host gave them."""
+
+    core: Component
+    node: Component
+
+    def to_protocol(self) -> dict[str, dict[str, Any]]:
+        """The ``components`` object the host sends."""
+        return {
+            name: {"path": str(component.path), "external": component.external}
+            for name, component in (("core", self.core), ("node", self.node))
+        }
+
+
+def components(instance: Any) -> Components | None:
+    """``instance.components`` as the host sends it; ``None`` when it names no ``core`` or ``node``."""
+    found = instance.get("components") if isinstance(instance, dict) else None
+    if not isinstance(found, dict):
+        return None
+    parts = {}
+    for name in ("core", "node"):
+        entry = found.get(name)
+        if not isinstance(entry, dict) or not isinstance(entry.get("path"), str) or not entry["path"]:
+            return None
+        parts[name] = Component(Path(entry["path"]), entry.get("external") is True)
+    return Components(parts["core"], parts["node"])
+
+
+def below_root(root: Path, platform: str) -> Components:
+    """The components of an instance at ``root`` when nothing else says: what its discovery signature maps."""
+    prefix = global_prefix(platform)
+    if (root / prefix.node.removeprefix("{component.core}/")).is_file():
+        node = root / ("node_modules/npm" if platform == "windows" else "bin")
+        return Components(Component(root, True), Component(node, True))
+    return Components(Component(root / "core"), Component(root / "node"))
 
 
 @dataclass(frozen=True)
@@ -32,10 +82,11 @@ class Layout:
     node: str
     npm: str
 
-    def path(self, template: str, root: Path) -> Path:
-        """``template`` as a path, with the components where this kind keeps them below ``root``."""
-        core = root if self.global_prefix else root / "core"
-        return Path(template.replace("{component.core}", str(core)).replace("{component.node}", str(root / "node")))
+    def path(self, template: str, found: Components) -> Path:
+        """``template`` as a path, with the instance's components."""
+        return Path(
+            template.replace("{component.core}", str(found.core.path)).replace("{component.node}", str(found.node.path))
+        )
 
 
 def own(platform: str) -> Layout:
@@ -63,16 +114,15 @@ def global_prefix(platform: str) -> Layout:
     )
 
 
-def read(root: Path | None, platform: str) -> Layout:
-    """The layout of the instance at ``root``: a global prefix when its node program is there, else its own.
+def read(found: Components, platform: str) -> Layout:
+    """The layout of an instance: a global prefix when ``core`` holds the node program, else its own.
 
     The node program alone decides, with or without dsh: a prefix whose dsh
     was uninstalled, or whose global install stopped half-way, is still the
     user's Node.js. The extension's own layout keeps it in ``node``, never
-    at the root.
+    in ``core``.
     """
-    if root is not None:
-        candidate = global_prefix(platform)
-        if candidate.path(candidate.node, root).is_file():
-            return candidate
+    candidate = global_prefix(platform)
+    if candidate.path(candidate.node, found).is_file():
+        return candidate
     return own(platform)

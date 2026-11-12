@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import platform as host_platform
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from spec import MINIMUM_NODE, NodeSpec, parse_node_spec
 
 DEFAULT_MIRROR = "https://nodejs.org/dist"
+# nodejs.org builds no musl Node.js; this one does, for x64 and arm64.
+MUSL_MIRROR = "https://unofficial-builds.nodejs.org/download/release"
 
 # Per Hanafubuki's platform name: the index's `files` key, the archive's
 # platform part and its extension.
@@ -43,10 +46,34 @@ def machine_arch(machine: str | None = None) -> str:
     return arch
 
 
+def machine_libc() -> str:
+    """This Linux's C library: ``musl`` (Alpine and the like) or ``glibc``.
+
+    ``platform.libc_ver`` names glibc from the interpreter's own binary; a
+    musl system is told by its dynamic loader.
+    """
+    if host_platform.libc_ver()[0] == "glibc":
+        return "glibc"
+    return "musl" if any(Path("/lib").glob("ld-musl-*")) else "glibc"
+
+
 def select(
-    index: list[dict[str, Any]], node_spec: str, platform: str, arch: str, mirror: str = DEFAULT_MIRROR
+    index: list[dict[str, Any]],
+    node_spec: str,
+    platform: str,
+    arch: str,
+    mirror: str = DEFAULT_MIRROR,
+    libc: str = "glibc",
 ) -> NodeRelease:
     """The newest release of the index that matches ``node_spec`` and has an archive for the platform.
+
+    Args:
+        index: The mirror's ``index.json``.
+        node_spec: ``lts``, ``latest``, a major or an exact version.
+        platform: Hanafubuki's platform name.
+        arch: Node's architecture name.
+        mirror: Where the archives are.
+        libc: On Linux, ``musl`` asks for the mirror's musl builds.
 
     Raises:
         ReleaseError: The spec does not read, the platform is unknown, or no release matches.
@@ -56,7 +83,10 @@ def select(
         raise ReleaseError(f"`{node_spec}` is not a Node.js version")
     if platform not in _ARCHIVES:
         raise ReleaseError(f"Node.js has no build for {platform}")
-    files_key, name_part, extension = (part.format(arch=arch) for part in _ARCHIVES[platform])
+    musl = platform == "linux" and libc == "musl"
+    files_key, name_part, extension = (
+        part.format(arch=f"{arch}-musl" if musl else arch) for part in _ARCHIVES[platform]
+    )
     candidates = [
         version
         for entry in index
@@ -65,6 +95,12 @@ def select(
         and files_key in entry.get("files", ())
         and _matches(spec, version, entry)
     ]
+    if not candidates and musl:
+        raise ReleaseError(
+            f"this Linux uses musl libc, and {mirror.rstrip('/')} has no musl build of Node.js `{spec.text}` "
+            f"for {arch}; set the Node.js download mirror to {MUSL_MIRROR}, or choose a Node.js of your own "
+            "in the instance's Paths"
+        )
     if not candidates:
         raise ReleaseError(f"no Node.js release matches `{spec.text}` for {platform}-{arch}")
     version = max(candidates)
@@ -105,6 +141,8 @@ def _release_version(entry: dict[str, Any]) -> tuple[int, int, int] | None:
 def _matches(spec: NodeSpec, version: tuple[int, int, int], entry: dict[str, Any]) -> bool:
     if spec.kind == "lts":
         return bool(entry.get("lts"))
+    if spec.kind == "latest":
+        return True
     if spec.exact is not None:
         return version == spec.exact
     return version[0] == spec.major

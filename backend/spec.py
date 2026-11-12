@@ -20,27 +20,31 @@ EXACT = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)$")
 MINIMUM_NODE = (24, 9, 0)
 DEFAULT_VERSION = "latest"
 DEFAULT_NODE_VERSION = "24"
+# Where dsh keeps its profiles, credentials and sessions: the instance's own
+# folders, or the user's `~/.dsh` and `~/.agents`.
+HOMES = ("instance", "user")
+DEFAULT_HOME = "instance"
 
 
 @dataclass(frozen=True)
 class NodeSpec:
-    """What ``nodeVersion`` asks for: the latest LTS, the latest of a major, or one release."""
+    """What ``nodeVersion`` asks for: the latest LTS, the latest release, the latest of a major, or one release."""
 
-    kind: str  # "lts", "major" or "exact"
+    kind: str  # "lts", "latest", "major" or "exact"
     major: int = 0
     exact: tuple[int, int, int] | None = None
 
     @property
     def text(self) -> str:
         """The spec as the user writes it."""
-        if self.kind == "lts":
-            return "lts"
+        if self.kind in ("lts", "latest"):
+            return self.kind
         if self.exact is not None:
             return ".".join(str(part) for part in self.exact)
         return str(self.major)
 
     def below_minimum(self) -> bool:
-        """Whether every release it can name is older than dsh needs; ``lts`` is checked once resolved."""
+        """Whether every release it can name is older than dsh needs; ``lts`` and ``latest`` are checked resolved."""
         if self.exact is not None:
             return self.exact < MINIMUM_NODE
         return self.kind == "major" and self.major < MINIMUM_NODE[0]
@@ -49,14 +53,20 @@ class NodeSpec:
 def parse_node_spec(value: str) -> NodeSpec | None:
     """Reads ``nodeVersion``; ``None`` when it is none of the accepted shapes."""
     text = value.strip().lower()
-    if text == "lts":
-        return NodeSpec("lts")
+    if text in ("lts", "latest"):
+        return NodeSpec(text)
     if match := MAJOR.match(text):
         return NodeSpec("major", major=int(match.group(1)))
     if match := EXACT.match(text):
         exact = (int(match.group(1)), int(match.group(2)), int(match.group(3)))
         return NodeSpec("exact", major=exact[0], exact=exact)
     return None
+
+
+def exact_version(text: str) -> tuple[int, int, int] | None:
+    """A release's version (``v24.11.0``, ``24.11.0``) as numbers; ``None`` for anything else."""
+    match = EXACT.match(text.strip().lower())
+    return (int(match.group(1)), int(match.group(2)), int(match.group(3))) if match else None
 
 
 def dsh_version(values: dict[str, object]) -> str:
@@ -69,6 +79,12 @@ def node_version(values: dict[str, object]) -> str:
     """The ``nodeVersion`` value, its default when unset."""
     value = values.get("nodeVersion")
     return value.strip() if isinstance(value, str) and value.strip() else DEFAULT_NODE_VERSION
+
+
+def home(values: dict[str, object]) -> str:
+    """The ``home`` value, its default when unset or unknown."""
+    value = values.get("home")
+    return value if isinstance(value, str) and value in HOMES else DEFAULT_HOME
 
 
 def issues(values: dict[str, object]) -> dict[str, str]:

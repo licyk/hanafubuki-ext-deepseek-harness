@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import layout
+import plans
 from tests.support import ROOT
 
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -49,7 +50,7 @@ class ManifestTest(unittest.TestCase):
     def test_manifest(self) -> None:
         document = manifest()
         self.assertEqual(document["id"], EXTENSION_ID)
-        self.assertEqual(document["engines"], {"hanafubuki": ">=0.3.29, <0.4", "api": 1})
+        self.assertEqual(document["engines"], {"hanafubuki": ">=0.3.30, <0.4", "api": 1})
         self.assertEqual(document["backend"], {"python": "backend/main.py", "sdWebuiAllInOne": True})
         self.assertTrue((ROOT / document["backend"]["python"]).is_file())
         self.assertEqual(document["permissions"]["instances"], "own-types")
@@ -64,18 +65,24 @@ class ManifestTest(unittest.TestCase):
         for entry in contributes["ui"]:
             self.assertTrue((ROOT / entry["entry"]).is_file(), entry)
         self.assertTrue((ROOT / descriptor()["preview"]).is_file())
-        for script in ("launch.py", "start-dsh.mjs", "intercept.mjs", "open-stub.mjs", "empty_dir.py"):
+        for script in ("launch.py", "start-dsh.mjs", "intercept.mjs", "open-stub.mjs"):
             self.assertTrue((ROOT / "launcher" / script).is_file(), script)
 
     def test_type(self) -> None:
         document = descriptor()
         self.assertEqual(document["provider"], "backend")
-        self.assertEqual([component["name"] for component in document["components"]], ["core", "node"])
+        core, node = document["components"]
+        self.assertEqual((core["name"], core["external"]), ("core", "allowed"))
+        self.assertNotIn("executable", core)
+        self.assertEqual((node["name"], node["external"]), ("node", "allowed"))
+        # The program the Paths panel picks: Node's own layout, as the backend's plans address it.
+        self.assertEqual(node["executable"], {"unix": "bin/node", "windows": "node.exe"})
+        for platform in ("linux", "windows"):
+            own = layout.own(platform)
+            program = node["executable"]["windows" if platform == "windows" else "unix"]
+            self.assertEqual(own.node, f"{{component.node}}/{program}")
         self.assertEqual(document["runtime"], {"kind": "none"})
-        self.assertEqual(
-            document["environment"]["path"], ["{component.node}", "{component.node}/bin", "{component.core}"]
-        )
-        self.assertEqual(document["management"]["operations"], ["update", "terminal"])
+        self.assertEqual(document["management"]["operations"], ["update", "terminal", "copy-user-home"])
         self.assertNotIn("steps", document.get("install", {}))
         [server] = document["servers"]
         self.assertEqual(server["role"], "web")
@@ -85,7 +92,9 @@ class ManifestTest(unittest.TestCase):
         self.assertTrue(server["webview"])
         self.assertEqual(server["restart"], "on-failure")
         defaults = {parameter["name"]: parameter["default"] for parameter in document["install"]["parameters"]}
-        self.assertEqual(defaults, {"version": "latest", "nodeVersion": "24"})
+        self.assertEqual(defaults, {"version": "latest", "nodeVersion": "24", "home": "instance"})
+        [home] = [parameter for parameter in document["install"]["parameters"] if parameter["name"] == "home"]
+        self.assertEqual([option["value"] for option in home["options"]], ["instance", "user"])
         own, unix, windows = document["discovery"]
         self.assertEqual(own["markers"], ["core/node_modules/@deepseek-ai/dsh/package.json", "node"])
         self.assertEqual(unix["markers"], ["bin/node", "lib/node_modules/@deepseek-ai/dsh/package.json"])
@@ -95,12 +104,48 @@ class ManifestTest(unittest.TestCase):
             ["node.exe", "node_modules/@deepseek-ai/dsh/package.json", "node_modules/npm/package.json"],
         )
         self.assertEqual(windows["components"], {"core": ".", "node": "node_modules/npm"})
+        self.assertNotIn("external", own)
         for signature in (unix, windows):
-            self.assertEqual(signature["values"], defaults)
+            # The prefix is the user's Node.js: never deleted with the instance, and its dsh's home is ~/.dsh.
+            self.assertEqual(signature["external"], ["core", "node"])
+            self.assertEqual(signature["values"], {**defaults, "home": "user"})
+
+    def test_environment_isolates_npm_node_and_dsh(self) -> None:
+        environment = descriptor()["environment"]
+        self.assertEqual(environment["unset"], ["npm_config_*", "NPM_CONFIG_*", "NODE_OPTIONS", "NODE_PATH"])
+        self.assertEqual(
+            environment["vars"],
+            {
+                "npm_config_userconfig": "{component.core}/.npmrc",
+                "npm_config_globalconfig": "{component.node}/etc/npmrc",
+                "npm_config_prefix": "{component.core}",
+                "npm_config_cache": "{instance.root}/.npm-cache",
+                "npm_config_update_notifier": "false",
+                "DSH_HOME": "{instance.root}/dsh-home",
+                "DSH_AGENTS_HOME": "{instance.root}/agents-home",
+            },
+        )
+        path = environment["path"]
+        # dsh by name is the instance's: its packages' programs come before
+        # everything; the prefix's global programs before Node's own.
+        self.assertEqual(
+            path,
+            [
+                "{component.core}/node_modules/.bin",
+                "{component.core}/bin",
+                "{component.core}",
+                "{component.node}",
+                "{component.node}/bin",
+            ],
+        )
+        self.assertLess(path.index("{component.core}/node_modules/.bin"), path.index("{component.core}"))
+        # The homes the launch plan's `user` empties are the ones the environment sets.
+        user = plans.launch_command(layout.own("linux"), "user")["env"]
+        self.assertEqual(set(user), {name for name in environment["vars"] if name.startswith("DSH_")})
 
     def test_each_signature_is_the_layout_the_backend_reads(self) -> None:
         # A tree holding just a signature's markers: the host attaches its root with
-        # those components, and the backend's plans for that root name what is there.
+        # those components, and the backend's plans for those components name what is there.
         expected = {0: ("linux", False), 1: ("linux", True), 2: ("windows", True)}
         for index, signature in enumerate(descriptor()["discovery"]):
             platform, global_prefix = expected[index]
@@ -112,25 +157,32 @@ class ManifestTest(unittest.TestCase):
                         (root / marker).mkdir()
                     else:
                         (root / marker).write_text("{}")
-                components = {"core": "core", "node": "node", **signature.get("components", {})}
-                paths = {name: (root / path).resolve() for name, path in components.items()}
+                mapped = {"core": "core", "node": "node", **signature.get("components", {})}
+                paths = {name: (root / path).resolve() for name, path in mapped.items()}
                 for name, path in paths.items():
                     self.assertTrue(path.is_dir(), name)
-                # The host's rule (InstancePathPolicy::validate_component_layout): only
-                # `core` may be the root, and another lies inside it only then.
+                # The host's rule (InstancePathPolicy::validate_component_layout): no
+                # component equals another, only `core` may be the root, and another
+                # lies inside it only then. So a prefix's `node` cannot be the prefix.
                 node, core = paths["node"], paths["core"]
+                self.assertNotEqual(node, core)
                 self.assertNotEqual(node, root.resolve())
                 self.assertFalse(core.is_relative_to(node))
                 if node.is_relative_to(core):
                     self.assertEqual(core, root.resolve())
 
-                kind = layout.read(root, platform)
+                external = set(signature.get("external", []))
+                sent = layout.Components(
+                    layout.Component(paths["core"], "core" in external),
+                    layout.Component(paths["node"], "node" in external),
+                )
+                kind = layout.read(sent, platform)
                 self.assertEqual(kind.global_prefix, global_prefix)
-                core_text = str(paths["core"])
+                # What the backend falls back to for a root no provider call described.
+                self.assertEqual(layout.below_root(root.resolve(), platform), sent)
                 if global_prefix:
-                    self.assertTrue(Path(kind.node.replace("{component.core}", core_text)).is_file())
-                    dsh = Path(kind.dsh_prefix.replace("{component.core}", core_text)) / layout.PACKAGE_JSON
-                    self.assertTrue(dsh.is_file())
+                    self.assertTrue(kind.path(kind.node, sent).is_file())
+                    self.assertTrue((kind.path(kind.dsh_prefix, sent) / layout.PACKAGE_JSON).is_file())
 
     def test_preview_is_a_16_9_png(self) -> None:
         data = (ROOT / descriptor()["preview"]).read_bytes()

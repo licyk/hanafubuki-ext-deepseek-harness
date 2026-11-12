@@ -1,7 +1,7 @@
 {
   "type": {
     "name": "DeepSeek Harness",
-    "description": "DeepSeek's agent harness (dsh) and its web UI, installed with npm on a Node.js of its own."
+    "description": "DeepSeek's agent harness (dsh) and its web UI, installed with npm on a Node.js of its own (or one of yours), with its own npm configuration and dsh home."
   },
   "components": {
     "core": "DeepSeek Harness",
@@ -11,7 +11,9 @@
     "version": "dsh version",
     "versionHelp": "An npm dist-tag (latest, next, alpha) or an exact version such as 0.2.2.",
     "nodeVersion": "Node.js version",
-    "nodeVersionHelp": "A major version (24), lts, or an exact version such as 24.9.1. dsh needs Node.js 24.9.0 or later."
+    "nodeVersionHelp": "A major version (24), lts, latest, or an exact version such as 24.9.1; an update picks the newest release it names. dsh needs Node.js 24.9.0 or later. Not used when Node.js is one of yours.",
+    "home": "dsh home",
+    "homeHelp": "Where dsh keeps its profiles, logins and sessions: in this instance (dsh-home and agents-home in its folder), or the ~/.dsh and ~/.agents every other dsh on this computer shares."
   },
   "settings": {
     "npmRegistry": "npm registry",
@@ -21,7 +23,7 @@
   },
   "issues": {
     "version": "Use an npm dist-tag (latest, next, alpha) or an exact version such as 0.2.2.",
-    "nodeVersion": "Use a major version (24 or later), lts, or an exact version such as 24.9.1.",
+    "nodeVersion": "Use a major version (24 or later), lts, latest, or an exact version such as 24.9.1.",
     "nodeTooOld": "dsh needs Node.js 24.9.0 or later."
   },
   "frame": {
@@ -38,15 +40,45 @@
     "showPrereleases": "Show pre-releases",
     "showAll": "Show all {count}",
     "nodeVersion": "Node.js version",
-    "nodeVersionHelp": "A major version (24), lts, or an exact version. Applied with the next switch or update.",
+    "nodeVersionHelp": "A major version (24), lts, latest, or an exact version. An update picks the newest release it names.",
     "apply": "Update with this Node.js",
-    "nodeUnmanaged": "This DeepSeek Harness is installed with npm --global in a Node.js of yours. Switching runs that Node's npm; Hanafubuki never changes the Node.js itself.",
+    "nodeUnmanaged": "This DeepSeek Harness is installed with npm --global in a Node.js of yours. Switching runs that Node's npm; Hanafubuki never changes the Node.js itself, and never deletes it with the instance.",
     "refresh": "Refresh",
     "loading": "Loading…",
     "registry": "Registry",
     "confirmHint": "Switching reinstalls dsh with npm; Hanafubuki asks you to confirm first.",
     "started": "The update started; its progress is the instance's.",
     "unsupported": "This version of Hanafubuki cannot update an instance from this page. Change the version in the instance's Maintenance section.",
-    "running": "Stop the instance before switching versions."
+    "running": "Stop the instance before switching versions.",
+    "nodeOwn": "your own ({version})",
+    "nodePrefix": "Uses the system's Node.js and dsh ({prefix}).",
+    "nodeExternal": "This instance runs your own Node.js ({path}). Hanafubuki never downloads into it or changes it; choose the managed Node.js in the instance's Paths to let Hanafubuki manage one.",
+    "home": "dsh home",
+    "homeInstance": "This instance's own ({path})",
+    "homeUser": "Shared with every dsh (~/.dsh)",
+    "useUserHome": "Share ~/.dsh",
+    "useInstanceHome": "Use the instance's own",
+    "homeHint": "Changing the home reinstalls dsh with npm. The instance's own home starts without the logins and sessions of ~/.dsh.",
+    "copyHome": "Copy from ~/.dsh",
+    "copyHomeHint": "Copies your ~/.dsh and ~/.agents (profiles, logins, sessions) into this instance's home; nothing is moved, and files already there are kept."
+  },
+  "homes": {
+    "instance": "This instance's own",
+    "user": "Shared (~/.dsh)"
+  },
+  "operations": {
+    "copy-user-home": "Copy from ~/.dsh"
+  },
+  "notices": {
+    "nodeUnreadable": "The Node.js you chose does not answer `--version`: {program}. Choose a folder whose bin/node (node.exe on Windows) runs, or the managed Node.js, in the instance's Paths.",
+    "nodeOwnTooOld": "The Node.js you chose is {version} ({program}); dsh needs 24.9.0 or later. Choose a newer one, or the managed Node.js, in the instance's Paths.",
+    "npmMissing": "The Node.js you chose ({program}) has no npm at {npm}, where its own npm lies in a Node.js release. Choose one with its npm, or the managed Node.js, in the instance's Paths.",
+    "copyTitle": "Copying ~/.dsh into the instance",
+    "copyStarted": "Copying ~/.dsh and ~/.agents into the instance's home. Files it already has are kept.",
+    "copyDone": "Copied {count} files from ~/.dsh and ~/.agents into the instance's home.",
+    "copyFailed": "Copying ~/.dsh into the instance's home failed: {error}",
+    "copyRunning": "Stop the instance before copying ~/.dsh into it.",
+    "copyNothing": "There is no ~/.dsh or ~/.agents to copy.",
+    "copyBusy": "~/.dsh is already being copied into this instance."
   }
 }
