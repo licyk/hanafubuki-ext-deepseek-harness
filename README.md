@@ -14,7 +14,7 @@ Id `io.github.licyk.deepseek-harness`; it adds two instance types:
   extension installs, always isolated ([Isolation](#isolation)).
 - `io.github.licyk.deepseek-harness:dsh-global` (*DeepSeek Harness (global
   npm install)*): a Node.js prefix holding a dsh you installed globally,
-  attached by discovery and never installed by Hanafubuki
+  attached by discovery only, never created by Hanafubuki
   ([Global npm installs](#global-npm-installs)).
 
 The rest of this section, and [Isolation](#isolation), are about `dsh`.
@@ -215,8 +215,9 @@ dsh as it is:
   apply to its server, its terminal and its updates, and nothing of the
   extension's settings (registry, Node.js mirror) does. Nothing is written
   into the prefix by the extension.
-- **Never installed**: creating one from the instance list fails at its
-  install with why; attach a prefix by scanning its folder instead.
+- **Never created**: the type is attach-only (`attachOnly = true`), so
+  Hanafubuki's create form does not offer it and Hanafubuki refuses to
+  create or import one; attach a prefix by scanning its folder instead.
 - **Update** (and **Switch**) runs the prefix's own npm,
   `node <npm-cli.js> install --global --prefix <prefix> @deepseek-ai/dsh@<version>`.
   No Node.js is downloaded, replaced or emptied. The versions page says it
@@ -362,7 +363,7 @@ npm 配置和 `~/.dsh`。
   的 Node.js 前缀（`dsh-global`；Unix：`bin/node` 与 `lib/node_modules/@deepseek-ai/dsh`；
   Windows：`node.exe`、`node_modules/@deepseek-ai/dsh` 与 `node_modules/npm`），`core`
   为该前缀，`core` 与 `node` 都记录为外部组件。这类实例不做任何隔离，不能在
-  Hanafubuki 中安装，只能接入；更新只用该前缀自带的 npm 执行 `npm install --global`，
+  Hanafubuki 中创建或导入（类型为 `attachOnly`，创建页面不列出它），只能扫描接入；更新只用该前缀自带的 npm 执行 `npm install --global`，
   从不下载、替换或清空其中的 Node.js；删除实例不会删除该前缀。早期版本以 `dsh`
   接入的前缀会被拒绝启动和更新：请「仅删除记录」后重新扫描。
 - 数据：实例目录中的 `dsh-home`、`agents-home` 与 `.npm-cache` 随实例删除；

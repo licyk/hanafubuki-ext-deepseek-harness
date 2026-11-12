@@ -461,7 +461,9 @@ class GlobalPrefixTest(unittest.TestCase):
 
     def test_update_runs_the_prefix_npm_globally_and_leaves_node(self) -> None:
         self.host.settings = {"npmRegistry": "https://registry.npmmirror.com", "nodeMirror": "https://m/"}
-        for kind in ("update", "reinstall"):
+        # `install`: the host's retry of an update that failed (the type is
+        # attach-only, so no first install reaches the backend).
+        for kind in ("update", "reinstall", "install"):
             [step] = self.plan(kind, {"version": "0.2.2"})
             self.assertEqual(
                 step["command"],
@@ -480,12 +482,6 @@ class GlobalPrefixTest(unittest.TestCase):
             # The user's own npm configuration applies, the extension's settings do not.
             self.assertEqual(step["env"], {})
         self.assertEqual(self.host.fetched, [])
-
-    def test_it_is_attached_never_installed(self) -> None:
-        params = {"type": GLOBAL_TYPE_ID, "kind": "install", "values": {}, "instance": self.instance}
-        refused = self.host.request("provider.installPlan", params)
-        self.assertEqual(refused["error"]["code"], -32003)
-        self.assertIn("npm install --global", refused["error"]["message"])
 
     def test_without_dsh_the_prefix_node_is_still_left_alone(self) -> None:
         shutil.rmtree(self.prefix / "lib" / "node_modules" / "@deepseek-ai")

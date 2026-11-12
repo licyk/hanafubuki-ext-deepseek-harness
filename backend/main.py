@@ -71,15 +71,14 @@ class Backend(Handler):
     ) -> list[dict[str, Any]]:
         """``provider.installPlan``: Node.js (unless an update keeps it, or it is the user's), npm, the marker.
 
-        A ``dsh-global`` instance is attached, never installed: its plan is
-        an update with the prefix's own npm alone, whatever else it says. An
+        A ``dsh-global`` instance is attached, never created (its type is
+        ``attachOnly``): every plan, an ``install`` included (the host's
+        retry of an update that failed), is the prefix's own npm alone. An
         external ``node`` is never downloaded into.
         """
         platform = self._platform_of(host)
         parts = _components(instance)
         if type_id == GLOBAL_TYPE_ID:
-            if kind == "install":
-                raise RpcError(REQUEST_FAILED, self._notice(host, "globalNotInstallable"))
             return plans.global_install_steps(layout.global_prefix(platform), values)
         shape = self._own_layout(host, parts, platform)
         registry = self._settings(host)["npmRegistry"]

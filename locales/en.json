@@ -74,7 +74,6 @@
     "copyNothing": "There is no ~/.dsh or ~/.agents to copy.",
     "copyBusy": "~/.dsh is already being copied into this instance.",
     "copySkipped": "{count} could not be copied (a link Windows does not let it make, or a file in use) and were left out.",
-    "globalNotInstallable": "A global npm install of dsh is not installed by Hanafubuki: install dsh with npm install --global in your Node.js, then scan its folder to attach it, or create a DeepSeek Harness instance instead.",
     "legacyGlobal": "This instance is a global npm install ({prefix}) that an earlier version attached as an isolated DeepSeek Harness; Hanafubuki will not plan for it. Delete its record only (Delete record only keeps every file), then scan the folder again: it is attached as DeepSeek Harness (global npm install).",
     "copyGlobal": "A global npm install uses your ~/.dsh: there is nothing to copy into it."
   },

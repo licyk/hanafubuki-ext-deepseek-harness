@@ -1,11 +1,13 @@
 # A Node.js prefix where the user installed dsh with `npm install --global`,
-# attached by discovery and never installed by Hanafubuki (the backend
-# refuses a first install). It is the user's dsh: its Node.js, npm and npm
-# configuration, and `~/.dsh`, so the type sets nothing of `dsh`'s
-# isolation. Its update is the prefix's own npm, `npm install --global`
-# (backend/plans.py); Node.js is never downloaded, replaced or emptied.
+# attached by discovery and never created by Hanafubuki (`attachOnly`: the
+# create form does not offer it, and the host refuses to create or import
+# one). It is the user's dsh: its Node.js, npm and npm configuration, and
+# `~/.dsh`, so the type sets nothing of `dsh`'s isolation. Its update is the
+# prefix's own npm, `npm install --global` (backend/plans.py); Node.js is
+# never downloaded, replaced or emptied.
 name = "dsh-global"
 provider = "backend"
+attachOnly = true
 displayName = { key = "ext.io.github.licyk.deepseek-harness.globalType.name" }
 description = { key = "ext.io.github.licyk.deepseek-harness.globalType.description" }
 preview = "images/preview.png"

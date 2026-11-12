@@ -74,7 +74,6 @@
     "copyNothing": "没有可复制的 ~/.dsh 或 ~/.agents。",
     "copyBusy": "正在将 ~/.dsh 复制到此实例。",
     "copySkipped": "{count} 个无法复制（Windows 不允许创建的链接，或正在使用的文件），已跳过。",
-    "globalNotInstallable": "Hanafubuki 不会安装全局 npm 安装的 dsh：请先在你的 Node.js 中用 npm install --global 安装 dsh，再扫描其文件夹接入；或改为创建 DeepSeek Harness 实例。",
     "legacyGlobal": "此实例是早期版本以独立 DeepSeek Harness 接入的全局 npm 安装（{prefix}），Hanafubuki 不会为它制定计划。请仅删除其记录（「仅删除记录」会保留所有文件），然后重新扫描该文件夹：它会以 DeepSeek Harness（全局 npm 安装）接入。",
     "copyGlobal": "全局 npm 安装使用你的 ~/.dsh，无需复制。"
   },

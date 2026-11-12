@@ -97,6 +97,9 @@ class ManifestTest(unittest.TestCase):
     def test_global_type(self) -> None:
         document = descriptor("dsh-global")
         self.assertEqual((document["name"], document["provider"]), ("dsh-global", "backend"))
+        # Only discovery attaches one: the host never creates or imports it.
+        self.assertIs(document["attachOnly"], True)
+        self.assertNotIn("attachOnly", descriptor("dsh"))
         core, node = document["components"]
         self.assertEqual((core["name"], core["external"]), ("core", "allowed"))
         self.assertEqual((node["name"], node["external"]), ("node", "allowed"))
