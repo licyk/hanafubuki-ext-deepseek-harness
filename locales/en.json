@@ -47,7 +47,6 @@
     "registry": "Registry",
     "confirmHint": "Switching reinstalls dsh with npm; Hanafubuki asks you to confirm first.",
     "started": "The update started; its progress is the instance's.",
-    "unsupported": "This version of Hanafubuki cannot update an instance from this page. Change the version in the instance's Maintenance section.",
     "running": "Stop the instance before switching versions.",
     "nodeOwn": "your own ({version})",
     "nodePrefix": "Uses the system's Node.js and dsh ({prefix}).",

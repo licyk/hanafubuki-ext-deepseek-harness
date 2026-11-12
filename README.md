@@ -66,7 +66,9 @@ The rest of this section, and [Isolation](#isolation), are about `dsh`.
   own (vX)", or "uses the system's Node.js and dsh (`<prefix>`)"), the npm
   dist-tags and versions, and **Switch**, which asks Hanafubuki to update the
   instance with that version (Hanafubuki asks you to confirm); dsh's home
-  and, once, **Copy from ~/.dsh**.
+  and, once, **Copy from ~/.dsh**. It draws with Hanafubuki's own controls
+  (the UI kit the application serves to frames), so it follows the
+  application's theme, accent and language.
 - **Copy from ~/.dsh** (also the instance's *Copy from ~/.dsh* operation):
   copies `~/.dsh` into `dsh-home` and `~/.agents` into `agents-home`, with
   the instance stopped. Nothing is moved, and a file the instance's home
@@ -82,15 +84,16 @@ The rest of this section, and [Isolation](#isolation), are about `dsh`.
 
 ## Requirements
 
-- Hanafubuki 0.3.31 or later (below 0.4): backend-provided types with
+- Hanafubuki 0.3.32 or later (below 0.4): backend-provided types with
   `preview`, component labels, `[environment]` (with `unset`), the
   `terminal` operation, `strip` and `replace`, `{host.python}`,
   `{extension.root}` and `{instance.root}`; external components and the
   component map in provider calls and in the instances `instances.ofType`
   lists; `captured` readiness for a declared
   server role; `[[discovery]]` signatures with `external`;
-  `sdWebuiAllInOne` for a Python backend; and the frame client's
-  `updateInstance` for the **Switch** button.
+  `sdWebuiAllInOne` for a Python backend; the frame client's
+  `updateInstance` for the **Switch** button, its `locale()` and the UI kit
+  (`__hanafubuki/ui.css`) for the versions page; and `[update]`.
 - Windows, macOS or Linux on x64 or arm64 (the platforms Node.js publishes).
 - Network access to nodejs.org and registry.npmjs.org (or the mirrors you
   set).
@@ -98,9 +101,9 @@ The rest of this section, and [Isolation](#isolation), are about `dsh`.
 ## Install
 
 - **From an archive**: build one ([Packaging](#packaging)) or take a release's
-  `io.github.licyk.deepseek-harness-<version>.zip`, then in Hanafubuki open
-  **Settings > Extensions**, install it, confirm the unverified package and
-  turn it on.
+  `io.github.licyk.deepseek-harness-<version>.zip` (or its URL), then in
+  Hanafubuki open **Settings > Extensions**, install it, confirm what it asks
+  for and turn it on.
 - **As a development link**: in **Settings > Extensions**, link this
   repository's folder. Hanafubuki reads it in place; **Reload** applies a
   change. A linked folder must hold no symbolic link anywhere, `web/node_modules`
@@ -108,6 +111,16 @@ The rest of this section, and [Isolation](#isolation), are about `dsh`.
   the web project's dependencies with another tool.
 
 Then create a **DeepSeek Harness** instance, install it and start it.
+
+## Updates
+
+The manifest's `[update] url` is the newest GitHub release's `latest.json`
+(`https://github.com/licyk/hanafubuki-ext-deepseek-harness/releases/latest/download/latest.json`).
+Hanafubuki reads it once a day and on **Check for Updates**, and offers
+**Update to <version>** on the extension's card when a release is newer than
+the installed one; it never installs one by itself. A development link is
+never checked. Versions before 0.3.0 name no update source: install 0.3.0
+once by hand.
 
 ## Isolation
 
@@ -318,15 +331,48 @@ the host serves at the package root, no module-preload polyfill, no inline
 script, and no network of its own (all data comes from the backend through
 `call`).
 
+The page links the application's UI kit, `../../__hanafubuki/ui.css`, before
+its own stylesheet (Vite leaves the link as it is), and draws with the kit's
+classes (class API 1: `btn`, `text-input`, `card-list`/`card-row`,
+`info-bar`, `checkbox`/`check-row`, `progress-bar`); `web/src/style.css` is
+only the page's layout. Nothing in it sizes the document or clips its
+overflow: the frame follows the page's height, and the instance's
+management section scrolls it.
+
+`web/hanafubuki/frame.d.ts` is the frame client's typings, an unedited copy
+of Hanafubuki's `sdk/frame/frame.d.ts` (the SDK is not published as a
+package, and the page must build from this repository alone);
+`tsconfig.json` maps the `hanafubuki-frame` import to it. Refresh it from a
+Hanafubuki checkout when the client changes:
+
+```sh
+cp ../Hanafubuki/sdk/frame/frame.d.ts web/hanafubuki/frame.d.ts
+```
+
 ## Packaging
 
 ```sh
-python scripts/package.py            # dist/io.github.licyk.deepseek-harness-<version>.zip
+python scripts/package.py            # dist/io.github.licyk.deepseek-harness-<version>.zip and dist/latest.json
 ```
 
 The archive holds the manifest, `README.md`, `LICENSE`, `types/`,
 `locales/`, `schemas/`, `images/`, `backend/`, `launcher/` and `ui/`;
 `web/`, `tests/`, `scripts/` and caches stay out. Build the page first.
+
+`latest.json` beside it has one entry (`platform` and `architecture` `any`:
+the package carries no native program) whose `download_url` is the archive
+as the release `v<version>` publishes it and whose `sha256` is the
+archive's. A release:
+
+```sh
+python scripts/package.py
+git tag v<version> && git push origin v<version>
+gh release create v<version> dist/io.github.licyk.deepseek-harness-<version>.zip dist/latest.json
+```
+
+Upload the files the script just wrote: a rebuilt archive has another
+SHA-256. Do not mark the release a draft or a pre-release, or
+`releases/latest` keeps serving the previous one.
 
 ## 中文说明
 
@@ -370,6 +416,14 @@ npm 配置和 `~/.dsh`。
   `dsh-global` 实例的 dsh 数据在 `~/.dsh`，删除实例不会删除它。
 - 设置：可配置 npm 源（如 `https://registry.npmmirror.com`）和 Node.js 下载镜像
   （如 `https://cdn.npmmirror.com/binaries/node`）。
+- 版本页面：使用 Hanafubuki 提供给框架的界面套件（`__hanafubuki/ui.css`）中的
+  按钮、输入框、卡片列表、信息栏、复选框和进度条，跟随应用的主题、强调色和语言。
+- 更新：清单的 `[update] url` 指向最新 GitHub Release 的 `latest.json`。Hanafubuki
+  每天及点击「检查更新」时读取它，有新版本时在扩展卡片上提供更新，但不会自动安装；
+  开发链接不检查更新。0.3.0 之前的版本没有更新源，需手动安装一次 0.3.0。
+- 需要 Hanafubuki 0.3.32 及以上（低于 0.4）。
 - 开发：`web/` 中执行 `npm ci && npm run build` 构建版本页面；以开发链接安装时，
   文件夹内不能有符号链接（`web/.npmrc` 已设置 `bin-links=false`）。
-  `python scripts/package.py` 生成安装包。
+  `web/hanafubuki/frame.d.ts` 是 Hanafubuki `sdk/frame/frame.d.ts` 的原样副本。
+  `python scripts/package.py` 生成安装包和 `latest.json`，发布时将两者一起上传到
+  Release `v<version>`。

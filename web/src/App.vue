@@ -8,6 +8,7 @@
 import { computed, onMounted, ref } from "vue";
 import * as client from "hanafubuki-frame";
 import type { FrameError } from "hanafubuki-frame";
+import InfoBar from "./InfoBar.vue";
 
 interface Status {
   running: boolean;
@@ -43,10 +44,14 @@ const showAll = ref(false);
 const message = ref("");
 const failed = ref(false);
 const busy = ref(false);
+// The application's language, which the host sends with the theme; the
+// backend's answer stands in until it has.
+const hostLocale = ref(client.locale());
+client.onLocale((locale) => (hostLocale.value = locale));
 
 const strings = computed(() => {
   const all = status.value?.strings ?? {};
-  const locale = status.value?.locale ?? "en";
+  const locale = hostLocale.value ?? status.value?.locale ?? "en";
   const chosen = locale === "en" || locale === "zh" ? locale : navigator.language.toLowerCase().startsWith("zh") ? "zh" : "en";
   return { ...all.en, ...all[chosen] };
 });
@@ -55,8 +60,6 @@ function t(key: string, values: Record<string, string | number> = {}): string {
   const text = strings.value[key] ?? (key === "loading" ? "Loading…" : key);
   return text.replace(/\{(\w+)\}/g, (_, name: string) => String(values[name] ?? ""));
 }
-
-const canUpdate = computed(() => typeof client.updateInstance === "function");
 
 const listed = computed(() => {
   const all = (versions.value?.versions ?? []).filter((entry) => showPrereleases.value || !entry.version.includes("-"));
@@ -99,7 +102,6 @@ async function load(refresh = false): Promise<void> {
 }
 
 async function update(values: { version?: string; nodeVersion?: string }): Promise<void> {
-  if (!client.updateInstance) return;
   busy.value = true;
   message.value = "";
   failed.value = false;
@@ -158,11 +160,11 @@ onMounted(() => {
     <section class="summary">
       <div class="fact">
         <span class="label">{{ t("installed") }}</span>
-        <span class="value">{{ status ? (status.installed ?? t("notInstalled")) : t("loading") }}</span>
+        <span class="value mono">{{ status ? (status.installed ?? t("notInstalled")) : t("loading") }}</span>
       </div>
       <div class="fact">
         <span class="label">{{ t("node") }}</span>
-        <span class="value">
+        <span class="value mono">
           {{
             status
               ? status.nodeSource === "own"
@@ -174,28 +176,31 @@ onMounted(() => {
       </div>
       <div class="fact">
         <span class="label">{{ t("requested") }}</span>
-        <span class="value">
+        <span class="value mono">
           {{ status?.requested.version ?? "—" }} · Node.js {{ status?.requested.nodeVersion ?? "—" }}
         </span>
       </div>
-      <button type="button" class="button" :disabled="busy" @click="load(true)">{{ t("refresh") }}</button>
+      <button type="button" class="btn refresh" :disabled="busy" @click="load(true)">{{ t("refresh") }}</button>
     </section>
 
-    <p v-if="message" class="message" :class="{ error: failed }" role="status">{{ message }}</p>
-    <p v-if="status && !canUpdate" class="message warning">{{ t("unsupported") }}</p>
-    <p v-else-if="status?.running" class="message warning">{{ t("running") }}</p>
+    <InfoBar v-if="message" :severity="failed ? 'error' : undefined" :message="message" />
+    <InfoBar v-if="status?.running" severity="warning" :message="t('running')" />
     <p v-else-if="status" class="hint">{{ t("confirmHint") }}</p>
 
     <section v-if="versions" class="block">
       <h2>{{ t("distTags") }}</h2>
-      <ul class="rows">
-        <li v-for="(version, tag) in versions.distTags" :key="tag" class="row">
-          <span class="name">{{ tag }}</span>
-          <span class="detail">{{ version }}</span>
-          <span v-if="version === status?.installed" class="current">{{ t("current") }}</span>
-          <button v-else type="button" class="button" :disabled="!canUpdate || busy || status?.running" @click="update({ version: String(tag) })">
-            {{ t("switch") }}
-          </button>
+      <ul class="card-list compact">
+        <li v-for="(version, tag) in versions.distTags" :key="tag" class="card-row">
+          <span class="card-row__text">
+            <span class="card-row__title">{{ tag }}</span>
+            <span class="card-row__description mono">{{ version }}</span>
+          </span>
+          <span class="card-row__control">
+            <span v-if="version === status?.installed" class="current">{{ t("current") }}</span>
+            <button v-else type="button" class="btn btn-sm" :disabled="busy || status?.running" @click="update({ version: String(tag) })">
+              {{ t("switch") }}
+            </button>
+          </span>
         </li>
       </ul>
     </section>
@@ -203,19 +208,26 @@ onMounted(() => {
     <section v-if="versions" class="block">
       <div class="heading">
         <h2>{{ t("versions") }}</h2>
-        <label class="toggle"><input v-model="showPrereleases" type="checkbox" /> {{ t("showPrereleases") }}</label>
+        <span class="check-row">
+          <input id="prereleases" v-model="showPrereleases" class="checkbox" type="checkbox" aria-labelledby="prereleases-label" />
+          <label id="prereleases-label" for="prereleases">{{ t("showPrereleases") }}</label>
+        </span>
       </div>
-      <ul class="rows">
-        <li v-for="entry in listed" :key="entry.version" class="row">
-          <span class="name mono">{{ entry.version }}</span>
-          <span class="detail">{{ published(entry.published) }}</span>
-          <span v-if="entry.version === status?.installed" class="current">{{ t("current") }}</span>
-          <button v-else type="button" class="button" :disabled="!canUpdate || busy || status?.running" @click="update({ version: entry.version })">
-            {{ t("switch") }}
-          </button>
+      <ul class="card-list compact">
+        <li v-for="entry in listed" :key="entry.version" class="card-row">
+          <span class="card-row__text">
+            <span class="card-row__title mono">{{ entry.version }}</span>
+          </span>
+          <span class="card-row__control">
+            <span class="hint">{{ published(entry.published) }}</span>
+            <span v-if="entry.version === status?.installed" class="current">{{ t("current") }}</span>
+            <button v-else type="button" class="btn btn-sm" :disabled="busy || status?.running" @click="update({ version: entry.version })">
+              {{ t("switch") }}
+            </button>
+          </span>
         </li>
       </ul>
-      <button v-if="hidden" type="button" class="link" @click="showAll = true">{{ t("showAll", { count: hidden }) }}</button>
+      <button v-if="hidden" type="button" class="btn btn-subtle show-all" @click="showAll = true">{{ t("showAll", { count: hidden }) }}</button>
       <p class="hint">{{ t("registry") }}: {{ versions.registry }}</p>
     </section>
 
@@ -231,8 +243,8 @@ onMounted(() => {
     <section v-else-if="status" class="block">
       <h2>{{ t("nodeVersion") }}</h2>
       <div class="inline">
-        <input v-model="nodeVersion" class="input mono" type="text" spellcheck="false" :aria-label="t('nodeVersion')" />
-        <button type="button" class="button accent" :disabled="!canUpdate || busy || status.running || !nodeVersion.trim()" @click="update({ nodeVersion: nodeVersion.trim() })">
+        <input v-model="nodeVersion" class="text-input mono node-version" type="text" spellcheck="false" :aria-label="t('nodeVersion')" />
+        <button type="button" class="btn btn-primary" :disabled="busy || status.running || !nodeVersion.trim()" @click="update({ nodeVersion: nodeVersion.trim() })">
           {{ t("apply") }}
         </button>
       </div>
@@ -241,14 +253,17 @@ onMounted(() => {
 
     <section v-if="status" class="block">
       <h2>{{ t("home") }}</h2>
-      <p class="detail">
+      <p>
         {{ status.homePath ? t("homeInstance", { path: status.homePath }) : t("homeUser") }}
       </p>
       <p v-if="status.homePath" class="hint">{{ t("homeHint") }}</p>
       <div v-if="status.canCopyHome" class="inline">
-        <button type="button" class="button accent" :disabled="busy || status.running || status.copying" @click="copyHome()">
+        <button type="button" class="btn" :disabled="busy || status.running || status.copying" @click="copyHome()">
           {{ t("copyHome") }}
         </button>
+      </div>
+      <div v-if="status.copying" class="progress-bar indeterminate" role="progressbar" :aria-label="t('copyHome')">
+        <span class="progress-bar__fill"></span>
       </div>
       <p v-if="status.canCopyHome" class="hint">{{ t("copyHomeHint") }}</p>
     </section>

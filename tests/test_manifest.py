@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -49,7 +50,11 @@ class ManifestTest(unittest.TestCase):
     def test_manifest(self) -> None:
         document = manifest()
         self.assertEqual(document["id"], EXTENSION_ID)
-        self.assertEqual(document["engines"], {"hanafubuki": ">=0.3.31, <0.4", "api": 1})
+        self.assertEqual(document["engines"], {"hanafubuki": ">=0.3.32, <0.4", "api": 1})
+        self.assertEqual(
+            document["update"],
+            {"url": "https://github.com/licyk/hanafubuki-ext-deepseek-harness/releases/latest/download/latest.json"},
+        )
         self.assertEqual(document["backend"], {"python": "backend/main.py", "sdWebuiAllInOne": True})
         self.assertTrue((ROOT / document["backend"]["python"]).is_file())
         self.assertEqual(document["permissions"]["instances"], "own-types")
@@ -249,6 +254,9 @@ class LayoutTest(unittest.TestCase):
             self.assertEqual(body.strip(), "", "an inline script is refused")
             self.assertIn('src="./', attributes)
         self.assertNotRegex(page, r"""(src|href)="/""")
+        # The application's UI kit, from the package root, before the page's own styles.
+        kit = page.index('href="../../__hanafubuki/ui.css"')
+        self.assertLess(kit, page.index('href="./index.css"'))
         script = (ROOT / "ui" / "versions" / "index.js").read_text(encoding="utf-8")
         # From ui/versions/index.js, ../../ is the package root, where the host serves the client.
         self.assertIn('from"../../__hanafubuki/frame.js"', script.replace(" ", ""))
@@ -283,6 +291,30 @@ class PackageTest(unittest.TestCase):
         for name in names:
             self.assertFalse(name.startswith(("web/", "tests/", "scripts/", ".git")), name)
             self.assertNotIn("__pycache__", name)
+
+    def test_latest_json_offers_the_archive_as_its_release_publishes_it(self) -> None:
+        version = manifest()["version"]
+        with tempfile.TemporaryDirectory() as directory:
+            archive = package.build(Path(directory))
+            digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+            entries = json.loads((Path(directory) / "latest.json").read_text(encoding="utf-8"))
+        self.assertEqual(
+            entries,
+            [
+                {
+                    "version": version,
+                    "download_url": "https://github.com/licyk/hanafubuki-ext-deepseek-harness/releases/download/"
+                    f"v{version}/{EXTENSION_ID}-{version}.zip",
+                    "sha256": digest,
+                    "platform": "any",
+                    "architecture": "any",
+                }
+            ],
+        )
+
+    def test_latest_json_needs_a_github_release_source(self) -> None:
+        with self.assertRaises(ValueError):
+            package.latest(Path("x.zip"), "1.0.0", "https://example.com/latest.json")
 
 
 if __name__ == "__main__":

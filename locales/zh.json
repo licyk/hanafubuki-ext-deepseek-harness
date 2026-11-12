@@ -47,7 +47,6 @@
     "registry": "源",
     "confirmHint": "切换会用 npm 重新安装 dsh；Hanafubuki 会先请你确认。",
     "started": "更新已开始；进度显示在实例中。",
-    "unsupported": "此版本的 Hanafubuki 无法从此页面更新实例。请在实例的维护区域中修改版本。",
     "running": "请先停止实例再切换版本。",
     "nodeOwn": "你自己的（{version}）",
     "nodePrefix": "使用系统的 Node.js 和 dsh（{prefix}）。",
