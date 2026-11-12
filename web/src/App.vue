@@ -1,8 +1,10 @@
 <script setup lang="ts">
 // The instance's version page: what is installed, what npm offers, and a
-// switch that asks the host to update the instance with another version.
-// Everything comes from the backend through the frame client (`status`,
-// `versions`); the page has no network of its own.
+// switch that asks the host to update the instance with another version;
+// which Node.js it runs, and where dsh keeps its home (with the one-time
+// copy of ~/.dsh). Everything comes from the backend through the frame
+// client (`status`, `versions`, `copyHome`); the page has no network of its
+// own.
 import { computed, onMounted, ref } from "vue";
 import * as client from "hanafubuki-frame";
 import type { FrameError } from "hanafubuki-frame";
@@ -11,8 +13,15 @@ interface Status {
   running: boolean;
   installed: string | null;
   node: string | null;
-  // False for a global npm prefix: its Node.js is the user's.
-  nodeManaged: boolean;
+  // `managed`: the Node.js the extension downloads; `own`: the user's, an
+  // external `node`; `prefix`: a global npm prefix's, dsh included.
+  nodeSource: "managed" | "own" | "prefix";
+  nodePath: string;
+  prefix: string | null;
+  home: "instance" | "user";
+  homePath: string;
+  canCopyHome: boolean;
+  copying: boolean;
   requested: { version: string | null; nodeVersion: string | null };
   locale: string;
   strings: Record<string, Record<string, string>>;
@@ -89,7 +98,7 @@ async function load(refresh = false): Promise<void> {
   }
 }
 
-async function update(values: { version?: string; nodeVersion?: string }): Promise<void> {
+async function update(values: { version?: string; nodeVersion?: string; home?: string }): Promise<void> {
   if (!client.updateInstance) return;
   busy.value = true;
   message.value = "";
@@ -98,6 +107,7 @@ async function update(values: { version?: string; nodeVersion?: string }): Promi
     await client.updateInstance({
       version: values.version ?? status.value?.requested.version ?? "latest",
       nodeVersion: values.nodeVersion ?? (nodeVersion.value.trim() || status.value?.requested.nodeVersion || "24"),
+      ...(values.home ? { home: values.home } : {}),
     });
     message.value = t("started");
   } catch (error) {
@@ -108,8 +118,32 @@ async function update(values: { version?: string; nodeVersion?: string }): Promi
   }
 }
 
+async function copyHome(): Promise<void> {
+  busy.value = true;
+  message.value = "";
+  failed.value = false;
+  try {
+    const answer = await client.call<{ notice: string }>("copyHome");
+    message.value = answer.notice;
+    if (status.value) status.value.copying = true;
+  } catch (error) {
+    failed.value = true;
+    message.value = describe(error);
+  } finally {
+    busy.value = false;
+  }
+}
+
 onMounted(() => {
   client.ready();
+  // The copy runs on in the backend; it says here when it is done.
+  client.on("home-copied", (payload) => {
+    const done = payload as { error?: string | null } | null;
+    failed.value = Boolean(done?.error);
+    void load().then(() => {
+      if (done?.error) message.value = done.error;
+    });
+  });
   void load();
 });
 </script>
@@ -123,7 +157,15 @@ onMounted(() => {
       </div>
       <div class="fact">
         <span class="label">{{ t("node") }}</span>
-        <span class="value">{{ status ? (status.node ?? t("unknown")) : "…" }}</span>
+        <span class="value">
+          {{
+            status
+              ? status.nodeSource === "own"
+                ? t("nodeOwn", { version: status.node ?? t("unknown") })
+                : (status.node ?? t("unknown"))
+              : "…"
+          }}
+        </span>
       </div>
       <div class="fact">
         <span class="label">{{ t("requested") }}</span>
@@ -172,9 +214,14 @@ onMounted(() => {
       <p class="hint">{{ t("registry") }}: {{ versions.registry }}</p>
     </section>
 
-    <section v-if="status && !status.nodeManaged" class="block">
+    <section v-if="status?.nodeSource === 'prefix'" class="block">
       <h2>{{ t("nodeVersion") }}</h2>
+      <p class="hint">{{ t("nodePrefix", { prefix: status.prefix ?? "" }) }}</p>
       <p class="hint">{{ t("nodeUnmanaged") }}</p>
+    </section>
+    <section v-else-if="status?.nodeSource === 'own'" class="block">
+      <h2>{{ t("nodeVersion") }}</h2>
+      <p class="hint">{{ t("nodeExternal", { path: status.nodePath }) }}</p>
     </section>
     <section v-else-if="status" class="block">
       <h2>{{ t("nodeVersion") }}</h2>
@@ -185,6 +232,31 @@ onMounted(() => {
         </button>
       </div>
       <p class="hint">{{ t("nodeVersionHelp") }}</p>
+    </section>
+
+    <section v-if="status" class="block">
+      <h2>{{ t("home") }}</h2>
+      <div class="inline">
+        <span class="detail">
+          {{ status.home === "instance" ? t("homeInstance", { path: status.homePath }) : t("homeUser") }}
+        </span>
+        <button
+          v-if="status.nodeSource !== 'prefix'"
+          type="button"
+          class="button"
+          :disabled="!canUpdate || busy || status.running"
+          @click="update({ home: status.home === 'instance' ? 'user' : 'instance' })"
+        >
+          {{ status.home === "instance" ? t("useUserHome") : t("useInstanceHome") }}
+        </button>
+      </div>
+      <p class="hint">{{ t("homeHint") }}</p>
+      <div v-if="status.canCopyHome" class="inline">
+        <button type="button" class="button accent" :disabled="busy || status.running || status.copying" @click="copyHome()">
+          {{ t("copyHome") }}
+        </button>
+      </div>
+      <p v-if="status.canCopyHome" class="hint">{{ t("copyHomeHint") }}</p>
     </section>
   </main>
 </template>
