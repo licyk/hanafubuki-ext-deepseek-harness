@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import home
 import layout
@@ -45,7 +46,7 @@ class CopyTest(unittest.TestCase):
         target = self.root / "dsh-home"
         self.write(target / "settings.json", "instance settings")
 
-        self.assertEqual(home.copy_missing(source, target), 2)
+        self.assertEqual(home.copy_missing(source, target), (2, 0))
         self.assertEqual((target / "profiles" / "default" / "credentials.json").read_text(), "user login")
         self.assertEqual((target / "profiles" / "default" / "sessions" / "a.jsonl").read_text(), "a")
         self.assertEqual((target / "settings.json").read_text(), "instance settings")
@@ -53,7 +54,7 @@ class CopyTest(unittest.TestCase):
         self.assertEqual((source / "settings.json").read_text(), "user settings")
         self.assertTrue((source / "profiles" / "default" / "credentials.json").is_file())
         # Again: nothing left to copy.
-        self.assertEqual(home.copy_missing(source, target), 0)
+        self.assertEqual(home.copy_missing(source, target), (0, 0))
 
     @unittest.skipIf(sys.platform == "win32", "symbolic links need a privilege on Windows")
     def test_a_link_is_copied_as_a_link(self) -> None:
@@ -62,9 +63,32 @@ class CopyTest(unittest.TestCase):
         source.mkdir(parents=True)
         os.symlink(self.base / "big", source / "plugins")
         target = self.root / "dsh-home"
-        self.assertEqual(home.copy_missing(source, target), 1)
+        self.assertEqual(home.copy_missing(source, target), (1, 0))
         self.assertTrue((target / "plugins").is_symlink())
         self.assertEqual(os.readlink(target / "plugins"), str(self.base / "big"))
+
+    @unittest.skipIf(sys.platform == "win32" or os.geteuid() == 0, "needs a file the user cannot read")
+    def test_an_entry_that_cannot_be_copied_is_skipped(self) -> None:
+        source = self.user / ".dsh"
+        self.write(source / "locked", "x")
+        self.write(source / "ok", "y")
+        (source / "locked").chmod(0)
+        try:
+            self.assertEqual(home.copy_missing(source, self.root / "dsh-home"), (1, 1))
+        finally:
+            (source / "locked").chmod(0o600)
+        self.assertEqual((self.root / "dsh-home" / "ok").read_text(), "y")
+
+    @unittest.skipIf(sys.platform == "win32", "symbolic links need a privilege on Windows")
+    def test_a_link_that_cannot_be_made_is_skipped(self) -> None:
+        # As on Windows without the privilege: the link is left out, the rest arrives.
+        source = self.user / ".dsh"
+        self.write(source / "ok", "y")
+        os.symlink(self.base, source / "link")
+        refused = OSError("A required privilege is not held by the client")
+        with mock.patch.object(home.os, "symlink", side_effect=refused):
+            self.assertEqual(home.copy_missing(source, self.root / "dsh-home"), (1, 1))
+        self.assertEqual((self.root / "dsh-home" / "ok").read_text(), "y")
 
 
 class KnownInstancesTest(unittest.TestCase):

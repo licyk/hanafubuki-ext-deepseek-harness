@@ -45,6 +45,7 @@ class FakeHost:
         self.instance_root = instance_root
         self.running = False
         self.fail_fetches = False
+        self.refused: set[str] = set()
         self.fetched: list[str] = []
         self.calls: list[tuple[str, Any]] = []
         self.emitted: list[dict[str, Any]] = []
@@ -120,6 +121,8 @@ class FakeHost:
             self.fetched.append(params["url"])
             _serve(params["url"], Path(params["destination"]))
             reply["result"] = {"path": params["destination"], "sha256": ""}
+        elif method in self.refused:
+            reply["error"] = {"code": -32002, "message": f"{method} refused"}
         elif method in ("ui.progress", "ui.notify", "log.write"):
             reply["result"] = {}
         else:
@@ -398,7 +401,7 @@ class BackendProtocolTest(unittest.TestCase):
         self.host.running = False
         self.assertIn("notice", self.host.request("ui.frame.call", call)["result"])
         done = self.host.wait_for_emit("home-copied")
-        self.assertEqual(done, {"instanceId": "dsh-1", "copied": 2, "error": None})
+        self.assertEqual(done, {"instanceId": "dsh-1", "copied": 2, "skipped": 0, "error": None})
         self.assertEqual((self.root / "dsh-home" / "profiles" / "default" / "credentials.json").read_text(), "login")
         self.assertEqual((self.root / "dsh-home" / "settings.json").read_text(), "instance's")
         self.assertEqual((self.root / "agents-home" / "skills" / "a.md").read_text(), "skill")
@@ -406,6 +409,15 @@ class BackendProtocolTest(unittest.TestCase):
         self.assertFalse(self.status()["canCopyHome"])
         progress = [params for method, params in self.host.calls if method == "ui.progress"]
         self.assertEqual([entry["done"] for entry in progress], [False, True])
+
+    def test_a_refused_progress_report_does_not_stop_the_copy(self) -> None:
+        (self.user / ".dsh").mkdir()
+        (self.user / ".dsh" / "a").write_text("a")
+        self.host.refused = {"ui.progress", "ui.notify"}
+        call = {"frame": "versions", "method": "copyHome", "params": None, "context": {"instanceId": "dsh-1"}}
+        self.assertIn("notice", self.host.request("ui.frame.call", call)["result"])
+        self.assertEqual(self.host.wait_for_emit("home-copied")["copied"], 1)
+        self.assertEqual((self.root / "dsh-home" / "a").read_text(), "a")
 
     def test_copy_home_as_an_operation(self) -> None:
         (self.user / ".dsh").mkdir()

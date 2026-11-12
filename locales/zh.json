@@ -79,6 +79,7 @@
     "copyFailed": "将 ~/.dsh 复制到实例的主目录失败：{error}",
     "copyRunning": "请先停止实例，再将 ~/.dsh 复制进去。",
     "copyNothing": "没有可复制的 ~/.dsh 或 ~/.agents。",
-    "copyBusy": "正在将 ~/.dsh 复制到此实例。"
+    "copyBusy": "正在将 ~/.dsh 复制到此实例。",
+    "copySkipped": "{count} 个无法复制（Windows 不允许创建的链接，或正在使用的文件），已跳过。"
   }
 }

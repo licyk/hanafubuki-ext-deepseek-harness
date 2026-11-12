@@ -197,27 +197,29 @@ class Backend(Handler):
     def _copy(self, host: Host, instance_id: str, jobs: list[home.Copy], notices: dict[str, str]) -> None:
         progress = f"copy-home-{instance_id}"
         title = notices.get("copyTitle", "Copying ~/.dsh")
-        copied, error = 0, None
+        _report(host, "ui.progress", {"id": progress, "title": title, "done": False})
+        copied = skipped = 0
+        error = None
         try:
-            host.call("ui.progress", {"id": progress, "title": title, "done": False})
             for job in jobs:
-                copied += home.copy_missing(job.source, job.target)
+                files, missed = home.copy_missing(job.source, job.target)
+                copied, skipped = copied + files, skipped + missed
             self._known_instances(host).mark_home_copied(instance_id)
-        except (OSError, RpcError) as failure:
+        except OSError as failure:
             error = str(failure)
         finally:
             with self._lock:
                 self._copying.discard(instance_id)
-        message = notices.get("copyFailed", "{error}") if error else notices.get("copyDone", "{count}")
-        try:
-            host.call("ui.progress", {"id": progress, "title": title, "done": True, "error": error})
-            host.call(
-                "ui.notify",
-                {"message": message.format(error=error, count=copied), "level": "error" if error else "info"},
-            )
-        except RpcError:
-            pass
-        host.emit_frame("versions", "home-copied", {"instanceId": instance_id, "copied": copied, "error": error})
+        _report(host, "ui.progress", {"id": progress, "title": title, "done": True, "error": error})
+        if error:
+            message = notices.get("copyFailed", "{error}").format(error=error)
+        else:
+            message = notices.get("copyDone", "{count}").format(count=copied)
+            if skipped:
+                message += " " + notices.get("copySkipped", "{count}").format(count=skipped)
+        _report(host, "ui.notify", {"message": message, "level": "error" if error else "info"})
+        payload = {"instanceId": instance_id, "copied": copied, "skipped": skipped, "error": error}
+        host.emit_frame("versions", "home-copied", payload)
 
     def _node_release(self, host: Host, node_spec: str, platform: str) -> node_release.NodeRelease:
         mirror = (self._settings(host)["nodeMirror"] or node_release.DEFAULT_MIRROR).rstrip("/")
@@ -291,6 +293,14 @@ def own_node_problem(parts: Components, platform: str, texts: dict[str, Any]) ->
     if not npm.is_file():
         return notices.get("npmMissing", "{npm}").format(program=program, npm=npm)
     return None
+
+
+def _report(host: Host, method: str, params: dict[str, Any]) -> None:
+    # What the user is told about a copy never stops it.
+    try:
+        host.call(method, params)
+    except RpcError as error:
+        host.log("warn", f"{method}: {error.message}")
 
 
 def locale_strings(locale: str) -> dict[str, Any]:

@@ -39,13 +39,15 @@ def copies(root: Path, user: Path | None = None) -> list[Copy]:
     return [Copy(entry.source, root / entry.target) for entry in user_homes(user) if entry.source.is_dir()]
 
 
-def copy_missing(source: Path, target: Path) -> int:
-    """Copies every file of ``source`` that ``target`` lacks; returns how many were copied.
+def copy_missing(source: Path, target: Path) -> tuple[int, int]:
+    """Copies every file of ``source`` that ``target`` lacks; returns how many were copied and skipped.
 
     Links are copied as links, never followed, so a link to a large folder
-    outside the home stays a link.
+    outside the home stays a link. An entry that cannot be copied (a link
+    where Windows grants no right to make one, a file in use) is skipped,
+    so the rest still arrives.
     """
-    copied = 0
+    copied = skipped = 0
     for directory, folders, files in os.walk(source):
         here = Path(directory)
         there = target / here.relative_to(source)
@@ -54,9 +56,13 @@ def copy_missing(source: Path, target: Path) -> int:
             destination = there / name
             if os.path.lexists(destination):
                 continue
-            if (here / name).is_symlink():
-                os.symlink(os.readlink(here / name), destination, target_is_directory=(here / name).is_dir())
-            else:
-                shutil.copy2(here / name, destination)
+            try:
+                if (here / name).is_symlink():
+                    os.symlink(os.readlink(here / name), destination, target_is_directory=(here / name).is_dir())
+                else:
+                    shutil.copy2(here / name, destination)
+            except OSError:
+                skipped += 1
+                continue
             copied += 1
-    return copied
+    return copied, skipped

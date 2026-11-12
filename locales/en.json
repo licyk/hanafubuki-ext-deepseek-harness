@@ -79,6 +79,7 @@
     "copyFailed": "Copying ~/.dsh into the instance's home failed: {error}",
     "copyRunning": "Stop the instance before copying ~/.dsh into it.",
     "copyNothing": "There is no ~/.dsh or ~/.agents to copy.",
-    "copyBusy": "~/.dsh is already being copied into this instance."
+    "copyBusy": "~/.dsh is already being copied into this instance.",
+    "copySkipped": "{count} could not be copied (a link Windows does not let it make, or a file in use) and were left out."
   }
 }
