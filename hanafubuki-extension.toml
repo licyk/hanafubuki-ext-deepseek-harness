@@ -12,8 +12,9 @@ description = { en = "Installs DeepSeek Harness (dsh) on a Node.js of its own or
 # the component map of each instance `instances.ofType` lists; 0.3.32: the
 # frame UI kit and the frame's `locale()`, and `[update]`; 0.3.34: the frame
 # component bundle (`__hanafubuki/vue.js`, `ui.js`, `ui-components.css`),
-# which the versions page is built on.
-hanafubuki = ">=0.3.34, <0.4"
+# which the versions page is built on; 0.3.35: the standard `update-check`
+# operation (`provider.checkUpdate`), the application's update check.
+hanafubuki = ">=0.3.35, <0.4"
 api = 1
 
 # Each release publishes `latest.json` beside its package (scripts/package.py).

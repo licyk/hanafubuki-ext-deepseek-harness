@@ -74,7 +74,9 @@
     "copyBusy": "~/.dsh is already being copied into this instance.",
     "copySkipped": "{count} could not be copied (a link Windows does not let it make, or a file in use) and were left out.",
     "legacyGlobal": "This instance is a global npm install ({prefix}) that an earlier version attached as an isolated DeepSeek Harness; Hanafubuki will not plan for it. Delete its record only (Delete record only keeps every file), then scan the folder again: it is attached as DeepSeek Harness (global npm install).",
-    "copyGlobal": "A global npm install uses your ~/.dsh: there is nothing to copy into it."
+    "copyGlobal": "A global npm install uses your ~/.dsh: there is nothing to copy into it.",
+    "notInstalled": "DeepSeek Harness is not installed in this instance yet.",
+    "noDistTag": "The npm registry names no version for the tag `{tag}`."
   },
   "globalType": {
     "name": "DeepSeek Harness (global npm install)",

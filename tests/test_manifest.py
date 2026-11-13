@@ -50,7 +50,7 @@ class ManifestTest(unittest.TestCase):
     def test_manifest(self) -> None:
         document = manifest()
         self.assertEqual(document["id"], EXTENSION_ID)
-        self.assertEqual(document["engines"], {"hanafubuki": ">=0.3.34, <0.4", "api": 1})
+        self.assertEqual(document["engines"], {"hanafubuki": ">=0.3.35, <0.4", "api": 1})
         self.assertEqual(
             document["update"],
             {"url": "https://github.com/licyk/hanafubuki-ext-deepseek-harness/releases/latest/download/latest.json"},
@@ -89,7 +89,7 @@ class ManifestTest(unittest.TestCase):
             program = node["executable"]["windows" if platform == "windows" else "unix"]
             self.assertEqual(own.node, f"{{component.node}}/{program}")
         self.assertEqual(document["runtime"], {"kind": "none"})
-        self.assertEqual(document["management"]["operations"], ["update", "terminal", "copy-user-home"])
+        self.assertEqual(document["management"]["operations"], ["update", "terminal", "update-check", "copy-user-home"])
         self.assertNotIn("steps", document.get("install", {}))
         self.assert_web_server(document)
         defaults = {parameter["name"]: parameter["default"] for parameter in document["install"]["parameters"]}

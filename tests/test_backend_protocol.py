@@ -141,6 +141,11 @@ class FakeHost:
 def _serve(url: str, destination: Path) -> None:
     # The recorded index and 24.11.0's SHASUMS; another release's SHASUMS
     # lists its Linux archives with a made-up digest.
+    if url.endswith("/@deepseek-ai%2Fdsh"):
+        versions = ("0.2.2", "0.3.0", "0.4.0-rc.1")
+        document = {"dist-tags": {"latest": "0.3.0", "next": "0.4.0-rc.1"}, "versions": {v: {} for v in versions}}
+        destination.write_text(json.dumps(document), encoding="utf-8")
+        return
     if url.endswith("/index.json"):
         shutil.copyfile(FIXTURES / "node-index.json", destination)
         return
@@ -358,6 +363,40 @@ class BackendProtocolTest(unittest.TestCase):
         self.assertEqual(set(status["strings"]["en"]), set(status["strings"]["zh"]))
         params = {"frame": "versions", "method": "status", "params": None, "context": {"instanceId": "other"}}
         self.assertEqual(self.host.request("ui.frame.call", params)["error"]["code"], -32003)
+
+    def check(self, values: dict[str, Any]) -> dict[str, Any]:
+        params = {"type": TYPE_ID, "values": values, "instance": self.instance}
+        return self.host.request("provider.checkUpdate", params)
+
+    def install_dsh(self, version: str) -> None:
+        package = self.root / "core" / "node_modules" / "@deepseek-ai" / "dsh"
+        package.mkdir(parents=True, exist_ok=True)
+        (package / "package.json").write_text(json.dumps({"name": "@deepseek-ai/dsh", "version": version}))
+
+    def test_the_update_check_follows_the_version_value(self) -> None:
+        self.install_dsh("0.2.2")
+        self.assertEqual(self.check({})["result"], {"current": "0.2.2", "latest": "0.3.0", "hasUpdate": True})
+        self.assertEqual(
+            self.check({"version": "next"})["result"],
+            {"current": "0.2.2", "latest": "0.4.0-rc.1", "hasUpdate": True},
+        )
+        # Pinned to what it has: Update would change nothing.
+        self.assertEqual(
+            self.check({"version": "0.2.2"})["result"], {"current": "0.2.2", "latest": "0.2.2", "hasUpdate": False}
+        )
+        # The registry's document is fetched once and then read from the cache.
+        self.assertEqual(sum("dsh" in url for url in self.host.fetched), 1)
+
+    def test_the_update_check_reads_the_cache_offline_and_says_what_it_lacks(self) -> None:
+        self.assertIn("尚未安装", self.check({})["error"]["message"])
+        self.install_dsh("0.3.0")
+        self.assertEqual(self.check({})["result"]["hasUpdate"], False)
+        self.host.fail_fetches = True
+        self.assertIn("beta", self.check({"version": "beta"})["error"]["message"])
+
+    def test_the_update_check_is_the_isolated_types_alone(self) -> None:
+        params = {"type": GLOBAL_TYPE_ID, "values": {}, "instance": self.instance}
+        self.assertEqual(self.host.request("provider.checkUpdate", params)["error"]["code"], -32602)
 
     @NO_SHELL_NODE
     def test_frame_status_of_an_external_node_from_the_listed_components(self) -> None:

@@ -74,7 +74,9 @@
     "copyBusy": "正在将 ~/.dsh 复制到此实例。",
     "copySkipped": "{count} 个无法复制（Windows 不允许创建的链接，或正在使用的文件），已跳过。",
     "legacyGlobal": "此实例是早期版本以独立 DeepSeek Harness 接入的全局 npm 安装（{prefix}），Hanafubuki 不会为它制定计划。请仅删除其记录（「仅删除记录」会保留所有文件），然后重新扫描该文件夹：它会以 DeepSeek Harness（全局 npm 安装）接入。",
-    "copyGlobal": "全局 npm 安装使用你的 ~/.dsh，无需复制。"
+    "copyGlobal": "全局 npm 安装使用你的 ~/.dsh，无需复制。",
+    "notInstalled": "此实例尚未安装 DeepSeek Harness。",
+    "noDistTag": "npm 注册表中没有标签 `{tag}` 对应的版本。"
   },
   "globalType": {
     "name": "DeepSeek Harness（全局 npm 安装）",

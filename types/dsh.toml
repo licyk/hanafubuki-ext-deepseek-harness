@@ -61,8 +61,10 @@ default = "24"
 advanced = true
 
 [management]
+# `update-check`: the application's update check (daily, and the card's
+# button) asks the backend (`provider.checkUpdate`).
 # `copy-user-home`: copies `~/.dsh` and `~/.agents` into the instance's homes.
-operations = ["update", "terminal", "copy-user-home"]
+operations = ["update", "terminal", "update-check", "copy-user-home"]
 
 [[servers]]
 role = "web"

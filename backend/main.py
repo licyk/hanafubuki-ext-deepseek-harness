@@ -2,8 +2,8 @@
 
 It provides two types: ``io.github.licyk.deepseek-harness:dsh``, which it
 installs isolated (it checks an instance's values and a Node.js of the
-user's, plans its install and update, Node.js then dsh with npm, and runs
-its ``copy-user-home`` operation), and ``...:dsh-global``, a global npm
+user's, plans its install and update, Node.js then dsh with npm, answers
+the application's update check and runs its ``copy-user-home`` operation), and ``...:dsh-global``, a global npm
 install of the user's, attached by discovery and updated with its own npm.
 It plans both types' ``web`` server and answers the version page's calls.
 """
@@ -118,6 +118,29 @@ class Backend(Handler):
         if operation != COPY_HOME or type_id != TYPE_ID:
             raise RpcError(INVALID_PARAMS, f"no operation `{operation}`")
         return self._start_copy(host, str(instance.get("id", "")))
+
+    def check_update(
+        self, host: Host, type_id: str, values: dict[str, Any], instance: dict[str, Any]
+    ) -> dict[str, Any]:
+        """``provider.checkUpdate`` of a ``dsh`` instance: the dsh it has, and the one Update installs.
+
+        Update installs the ``version`` value: an exact version as it is, a
+        dist-tag (``latest``) as the registry names it now. The registry's
+        document is the version page's, cached for ``REGISTRY_MAX_AGE`` and
+        read from the cache when the registry does not answer.
+        """
+        if type_id != TYPE_ID:
+            raise RpcError(INVALID_PARAMS, f"type `{type_id}` has no update check")
+        parts = _components(instance)
+        shape = self._own_layout(host, parts, self._platform_of(host))
+        installed = _package_version(shape.path(shape.dsh_prefix, parts) / layout.PACKAGE_JSON)
+        if installed is None:
+            raise RpcError(REQUEST_FAILED, self._notice(host, "notInstalled"))
+        wanted = spec.dsh_version(values)
+        target = wanted if spec.SEMVER.match(wanted) else self._versions(host, False)["distTags"].get(wanted)
+        if not isinstance(target, str):
+            raise RpcError(REQUEST_FAILED, self._notice(host, "noDistTag").format(tag=wanted))
+        return {"current": installed, "latest": target, "hasUpdate": target != installed}
 
     def frame_call(self, host: Host, frame: str, method: str, params: Any, context: dict[str, Any]) -> Any:
         """``ui.frame.call`` from the ``versions`` frame: ``status``, ``versions`` and ``copyHome``."""

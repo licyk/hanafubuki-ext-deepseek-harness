@@ -84,7 +84,7 @@ The rest of this section, and [Isolation](#isolation), are about `dsh`.
 
 ## Requirements
 
-- Hanafubuki 0.3.34 or later (below 0.4): backend-provided types with
+- Hanafubuki 0.3.35 or later (below 0.4): backend-provided types with
   `preview`, component labels, `[environment]` (with `unset`), the
   `terminal` operation, `strip` and `replace`, `{host.python}`,
   `{extension.root}` and `{instance.root}`; external components and the
@@ -94,8 +94,9 @@ The rest of this section, and [Isolation](#isolation), are about `dsh`.
   `sdWebuiAllInOne` for a Python backend; the frame client's
   `updateInstance` for the **Switch** button, its `locale()`, the UI kit
   (`__hanafubuki/ui.css`) and the component bundle (`__hanafubuki/vue.js`,
-  `ui.js` and `ui-components.css`, 0.3.34) for the versions page; and
-  `[update]`.
+  `ui.js` and `ui-components.css`, 0.3.34) for the versions page;
+  `[update]`; and the `update-check` operation (`provider.checkUpdate`,
+  0.3.35).
 - Windows, macOS or Linux on x64 or arm64 (the platforms Node.js publishes).
 - Network access to nodejs.org and registry.npmjs.org (or the mirrors you
   set).
@@ -123,6 +124,17 @@ Hanafubuki reads it once a day and on **Check for Updates**, and offers
 the installed one; it never installs one by itself. A development link is
 never checked. Versions before 0.3.0 name no update source: install 0.3.0
 once by hand.
+
+An isolated instance's own updates: the `dsh` type declares `update-check`,
+so Hanafubuki's instance update check (once a day while it is on in
+Settings, and the instance card's **Check for updates**) asks the backend
+(`provider.checkUpdate`). It compares the installed dsh with the version
+**Update** would install: the `version` value as it is when it is an exact
+version, or the version the registry's dist-tag names now (`latest`,
+`next`). An instance pinned to the version it has shows no update. The
+registry's document is the versions page's, cached for ten minutes and read
+from the cache when the registry does not answer. A global npm install
+(`dsh-global`) is yours to update and is not checked.
 
 ## Isolation
 
@@ -446,7 +458,10 @@ npm 配置和 `~/.dsh`。
 - 更新：清单的 `[update] url` 指向最新 GitHub Release 的 `latest.json`。Hanafubuki
   每天及点击「检查更新」时读取它，有新版本时在扩展卡片上提供更新，但不会自动安装；
   开发链接不检查更新。0.3.0 之前的版本没有更新源，需手动安装一次 0.3.0。
-- 需要 Hanafubuki 0.3.34 及以上（低于 0.4），即提供框架组件包的版本。
+- 实例更新检查：`dsh` 类型声明了 `update-check`，Hanafubuki 每天（设置中开启时）及在实例卡片上点击「检查更新」时，
+  会让后端比较已安装的 dsh 与「更新」将安装的版本（确切版本按原样，dist-tag 按注册表当前指向）；
+  固定为当前版本的实例不会提示更新。全局 npm 安装（`dsh-global`）由你自行更新，不做检查。
+- 需要 Hanafubuki 0.3.35 及以上（低于 0.4），即支持 `update-check` 的版本。
 - 开发：`web/` 中执行 `npm ci && npm run build` 构建版本页面；以开发链接安装时，
   文件夹内不能有符号链接（`web/.npmrc` 已设置 `bin-links=false`）。
   `web/hanafubuki/frame.d.ts` 与 `web/hanafubuki/ui.d.ts` 分别是 Hanafubuki
