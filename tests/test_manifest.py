@@ -50,7 +50,7 @@ class ManifestTest(unittest.TestCase):
     def test_manifest(self) -> None:
         document = manifest()
         self.assertEqual(document["id"], EXTENSION_ID)
-        self.assertEqual(document["engines"], {"hanafubuki": ">=0.3.32, <0.4", "api": 1})
+        self.assertEqual(document["engines"], {"hanafubuki": ">=0.3.34, <0.4", "api": 1})
         self.assertEqual(
             document["update"],
             {"url": "https://github.com/licyk/hanafubuki-ext-deepseek-harness/releases/latest/download/latest.json"},
@@ -254,12 +254,20 @@ class LayoutTest(unittest.TestCase):
             self.assertEqual(body.strip(), "", "an inline script is refused")
             self.assertIn('src="./', attributes)
         self.assertNotRegex(page, r"""(src|href)="/""")
-        # The application's UI kit, from the package root, before the page's own styles.
+        # The application's UI kit, then its components' styles, from the package root, before the page's own.
         kit = page.index('href="../../__hanafubuki/ui.css"')
-        self.assertLess(kit, page.index('href="./index.css"'))
+        components = page.index('href="../../__hanafubuki/ui-components.css"')
+        self.assertLess(kit, components)
+        self.assertLess(components, page.index('href="./index.css"'))
         script = (ROOT / "ui" / "versions" / "index.js").read_text(encoding="utf-8")
-        # From ui/versions/index.js, ../../ is the package root, where the host serves the client.
-        self.assertIn('from"../../__hanafubuki/frame.js"', script.replace(" ", ""))
+        # From ui/versions/index.js, ../../ is the package root, where the host serves the client,
+        # Vue and the component bundle. The page imports only those: Vue is the host's
+        # `__hanafubuki/vue.js`, the one runtime `ui.js` (importing `./vue.js`) shares.
+        imported = set(re.findall(r"""(?:\bfrom|\bimport)\s*\(?\s*["']([^"']+)["']""", script))
+        self.assertEqual(
+            imported,
+            {"../../__hanafubuki/frame.js", "../../__hanafubuki/ui.js", "../../__hanafubuki/vue.js"},
+        )
         self.assertNotRegex(script, r"\bfetch\(|new Function|\beval\(")
         self.assertFalse((ROOT / "__hanafubuki").exists())
 
