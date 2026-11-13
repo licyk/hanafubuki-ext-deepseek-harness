@@ -4,11 +4,12 @@
 // which Node.js it runs, and where dsh keeps its home (with the one-time
 // copy of ~/.dsh). Everything comes from the backend through the frame
 // client (`status`, `versions`, `copyHome`); the page has no network of its
-// own.
+// own. The controls are the application's own components, which the host
+// serves every frame (`__hanafubuki/ui.js`, installed in main.ts).
 import { computed, onMounted, ref } from "vue";
 import * as client from "hanafubuki-frame";
 import type { FrameError } from "hanafubuki-frame";
-import InfoBar from "./InfoBar.vue";
+import { BaseInput, BaseSwitch, InfoBar, ProgressBar, RefreshButton, StatusBadge } from "hanafubuki-ui";
 
 interface Status {
   running: boolean;
@@ -44,6 +45,7 @@ const showAll = ref(false);
 const message = ref("");
 const failed = ref(false);
 const busy = ref(false);
+const refreshing = ref(false);
 // The application's language, which the host sends with the theme; the
 // backend's answer stands in until it has.
 const hostLocale = ref(client.locale());
@@ -85,19 +87,16 @@ function describe(error: unknown): string {
 async function load(refresh = false): Promise<void> {
   message.value = "";
   failed.value = false;
+  refreshing.value = true;
   try {
     status.value = await client.call<Status>("status");
     nodeVersion.value = status.value.requested.nodeVersion ?? nodeVersion.value;
-  } catch (error) {
-    failed.value = true;
-    message.value = describe(error);
-    return;
-  }
-  try {
     versions.value = await client.call<Versions>("versions", { refresh });
   } catch (error) {
     failed.value = true;
     message.value = describe(error);
+  } finally {
+    refreshing.value = false;
   }
 }
 
@@ -180,12 +179,13 @@ onMounted(() => {
           {{ status?.requested.version ?? "—" }} · Node.js {{ status?.requested.nodeVersion ?? "—" }}
         </span>
       </div>
-      <button type="button" class="btn refresh" :disabled="busy" @click="load(true)">{{ t("refresh") }}</button>
+      <RefreshButton class="refresh" :label="t('refresh')" :busy="refreshing" :disabled="busy" @click="load(true)" />
     </section>
 
-    <InfoBar v-if="message" :severity="failed ? 'error' : undefined" :message="message" />
-    <InfoBar v-if="status?.running" severity="warning" :message="t('running')" />
-    <p v-else-if="status" class="hint">{{ t("confirmHint") }}</p>
+    <!-- A bar comes and goes through `open`, which collapses it away. -->
+    <InfoBar :open="Boolean(message)" :severity="failed ? 'error' : 'info'" :message="message" />
+    <InfoBar :open="Boolean(status?.running)" severity="warning" :message="t('running')" />
+    <p v-if="status && !status.running" class="hint">{{ t("confirmHint") }}</p>
 
     <section v-if="versions" class="block">
       <h2>{{ t("distTags") }}</h2>
@@ -196,7 +196,7 @@ onMounted(() => {
             <span class="card-row__description mono">{{ version }}</span>
           </span>
           <span class="card-row__control">
-            <span v-if="version === status?.installed" class="current">{{ t("current") }}</span>
+            <StatusBadge v-if="version === status?.installed" tone="success">{{ t("current") }}</StatusBadge>
             <button v-else type="button" class="btn btn-sm" :disabled="busy || status?.running" @click="update({ version: String(tag) })">
               {{ t("switch") }}
             </button>
@@ -208,9 +208,10 @@ onMounted(() => {
     <section v-if="versions" class="block">
       <div class="heading">
         <h2>{{ t("versions") }}</h2>
-        <span class="check-row">
-          <input id="prereleases" v-model="showPrereleases" class="checkbox" type="checkbox" aria-labelledby="prereleases-label" />
-          <label id="prereleases-label" for="prereleases">{{ t("showPrereleases") }}</label>
+        <!-- The label is text, not a <label>: only the switch itself toggles. -->
+        <span class="inline">
+          <span id="prereleases-label">{{ t("showPrereleases") }}</span>
+          <BaseSwitch v-model="showPrereleases" aria-labelledby="prereleases-label" />
         </span>
       </div>
       <ul class="card-list compact">
@@ -220,7 +221,7 @@ onMounted(() => {
           </span>
           <span class="card-row__control">
             <span class="hint">{{ published(entry.published) }}</span>
-            <span v-if="entry.version === status?.installed" class="current">{{ t("current") }}</span>
+            <StatusBadge v-if="entry.version === status?.installed" tone="success">{{ t("current") }}</StatusBadge>
             <button v-else type="button" class="btn btn-sm" :disabled="busy || status?.running" @click="update({ version: entry.version })">
               {{ t("switch") }}
             </button>
@@ -241,14 +242,22 @@ onMounted(() => {
       <p class="hint">{{ t("nodeExternal", { path: status.nodePath }) }}</p>
     </section>
     <section v-else-if="status" class="block">
-      <h2>{{ t("nodeVersion") }}</h2>
+      <!-- The section's heading names the field: a FormField would repeat it as a label. -->
+      <h2 id="node-version-label">{{ t("nodeVersion") }}</h2>
       <div class="inline">
-        <input v-model="nodeVersion" class="text-input mono node-version" type="text" spellcheck="false" :aria-label="t('nodeVersion')" />
+        <BaseInput
+          class="mono node-version"
+          :model-value="nodeVersion"
+          spellcheck="false"
+          aria-labelledby="node-version-label"
+          aria-describedby="node-version-help"
+          @update:model-value="nodeVersion = String($event ?? '')"
+        />
         <button type="button" class="btn btn-primary" :disabled="busy || status.running || !nodeVersion.trim()" @click="update({ nodeVersion: nodeVersion.trim() })">
           {{ t("apply") }}
         </button>
       </div>
-      <p class="hint">{{ t("nodeVersionHelp") }}</p>
+      <p id="node-version-help" class="hint">{{ t("nodeVersionHelp") }}</p>
     </section>
 
     <section v-if="status" class="block">
@@ -262,9 +271,7 @@ onMounted(() => {
           {{ t("copyHome") }}
         </button>
       </div>
-      <div v-if="status.copying" class="progress-bar indeterminate" role="progressbar" :aria-label="t('copyHome')">
-        <span class="progress-bar__fill"></span>
-      </div>
+      <ProgressBar v-if="status.copying" :value="null" :label="t('copyHome')" />
       <p v-if="status.canCopyHome" class="hint">{{ t("copyHomeHint") }}</p>
     </section>
   </main>

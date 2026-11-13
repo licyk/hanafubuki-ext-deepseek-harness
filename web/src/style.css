@@ -1,5 +1,6 @@
-/* The application's UI kit (`__hanafubuki/ui.css`, linked by index.html)
-   draws the controls, the type and the colours; this is the page's layout. */
+/* The application's UI kit (`__hanafubuki/ui.css`) and its components
+   (`__hanafubuki/ui-components.css`), both linked by index.html, draw the
+   controls, the type and the colours; this is the page's layout. */
 body {
   margin: 0;
 }
@@ -61,11 +62,6 @@ h2 {
 
 .hint {
   color: var(--text-secondary);
-}
-
-.current {
-  color: var(--success);
-  font: var(--type-caption);
 }
 
 .node-version {

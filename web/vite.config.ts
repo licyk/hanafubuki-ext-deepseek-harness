@@ -3,10 +3,16 @@ import { defineConfig } from "vite";
 
 // The frame is served from the package at `ui/versions/` under a policy of
 // `script-src` its own files only and `connect-src 'none'`: relative URLs,
-// one flat directory (so `../../__hanafubuki/frame.js` from its script is
-// the package root's frame client, which the host serves), no module
-// preload polyfill (it fetches), and the frame client left as an import.
-const FRAME_CLIENT = "hanafubuki-frame";
+// one flat directory (so `../../__hanafubuki/` from its script is the package
+// root's, which the host serves), no module preload polyfill (it fetches),
+// and the host's modules left as imports. Vue is one of them: the page and
+// the component bundle (`ui.js`, which imports `./vue.js`) must share the
+// host's one runtime, so the page imports the same `__hanafubuki/vue.js`.
+const HOST_MODULES: Record<string, string> = {
+  "hanafubuki-frame": "../../__hanafubuki/frame.js",
+  "hanafubuki-ui": "../../__hanafubuki/ui.js",
+  vue: "../../__hanafubuki/vue.js",
+};
 
 export default defineConfig({
   base: "./",
@@ -17,9 +23,9 @@ export default defineConfig({
     modulePreload: false,
     assetsDir: "",
     rollupOptions: {
-      external: [FRAME_CLIENT],
+      external: Object.keys(HOST_MODULES),
       output: {
-        paths: { [FRAME_CLIENT]: "../../__hanafubuki/frame.js" },
+        paths: HOST_MODULES,
         entryFileNames: "[name].js",
         chunkFileNames: "[name].js",
         assetFileNames: "[name][extname]",

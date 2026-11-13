@@ -10,7 +10,10 @@
     "verbatimModuleSyntax": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": [],
-    "paths": { "hanafubuki-frame": ["./hanafubuki/frame.d.ts"] }
+    "paths": {
+      "hanafubuki-frame": ["./hanafubuki/frame.d.ts"],
+      "hanafubuki-ui": ["./hanafubuki/ui.d.ts"]
+    }
   },
   "include": ["src/**/*.ts", "src/**/*.vue", "vite.config.ts"]
 }

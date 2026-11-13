@@ -66,9 +66,9 @@ The rest of this section, and [Isolation](#isolation), are about `dsh`.
   own (vX)", or "uses the system's Node.js and dsh (`<prefix>`)"), the npm
   dist-tags and versions, and **Switch**, which asks Hanafubuki to update the
   instance with that version (Hanafubuki asks you to confirm); dsh's home
-  and, once, **Copy from ~/.dsh**. It draws with Hanafubuki's own controls
-  (the UI kit the application serves to frames), so it follows the
-  application's theme, accent and language.
+  and, once, **Copy from ~/.dsh**. It is built from Hanafubuki's own Vue
+  components and UI kit, which the application serves to frames, so it
+  looks like the application and follows its theme, accent and language.
 - **Copy from ~/.dsh** (also the instance's *Copy from ~/.dsh* operation):
   copies `~/.dsh` into `dsh-home` and `~/.agents` into `agents-home`, with
   the instance stopped. Nothing is moved, and a file the instance's home
@@ -84,7 +84,7 @@ The rest of this section, and [Isolation](#isolation), are about `dsh`.
 
 ## Requirements
 
-- Hanafubuki 0.3.32 or later (below 0.4): backend-provided types with
+- Hanafubuki 0.3.34 or later (below 0.4): backend-provided types with
   `preview`, component labels, `[environment]` (with `unset`), the
   `terminal` operation, `strip` and `replace`, `{host.python}`,
   `{extension.root}` and `{instance.root}`; external components and the
@@ -92,8 +92,10 @@ The rest of this section, and [Isolation](#isolation), are about `dsh`.
   lists; `captured` readiness for a declared
   server role; `[[discovery]]` signatures with `external`;
   `sdWebuiAllInOne` for a Python backend; the frame client's
-  `updateInstance` for the **Switch** button, its `locale()` and the UI kit
-  (`__hanafubuki/ui.css`) for the versions page; and `[update]`.
+  `updateInstance` for the **Switch** button, its `locale()`, the UI kit
+  (`__hanafubuki/ui.css`) and the component bundle (`__hanafubuki/vue.js`,
+  `ui.js` and `ui-components.css`, 0.3.34) for the versions page; and
+  `[update]`.
 - Windows, macOS or Linux on x64 or arm64 (the platforms Node.js publishes).
 - Network access to nodejs.org and registry.npmjs.org (or the mirrors you
   set).
@@ -326,27 +328,48 @@ npm run build      # type-checks, then writes ../ui/versions
 ```
 
 The build keeps what a frame needs: relative URLs (`base: './'`), one flat
-directory so the script's `../../__hanafubuki/frame.js` is the frame client
-the host serves at the package root, no module-preload polyfill, no inline
-script, and no network of its own (all data comes from the backend through
-`call`).
+directory so the script's `../../__hanafubuki/` is the package root's, which
+the host serves, no module-preload polyfill, no inline script, and no
+network of its own (all data comes from the backend through `call`).
 
-The page links the application's UI kit, `../../__hanafubuki/ui.css`, before
-its own stylesheet (Vite leaves the link as it is), and draws with the kit's
-classes (class API 1: `btn`, `text-input`, `card-list`/`card-row`,
-`info-bar`, `checkbox`/`check-row`, `progress-bar`); `web/src/style.css` is
-only the page's layout. Nothing in it sizes the document or clips its
+The page is built on Hanafubuki's component bundle (UI API 1), which the
+host serves every frame beside the frame client: `vite.config.ts` leaves
+three imports external and maps them to the host's files,
+
+| Import | Built as (from `ui/versions/index.js`) |
+| --- | --- |
+| `hanafubuki-frame` | `../../__hanafubuki/frame.js`, the frame client |
+| `hanafubuki-ui` | `../../__hanafubuki/ui.js`, the components |
+| `vue` | `../../__hanafubuki/vue.js`, Vue's runtime |
+
+so the page and `ui.js` (which imports `./vue.js`) share the host's one Vue
+runtime, and `index.js` holds the page alone. The frame's policy allows no
+`eval`, so the host's Vue has no template compiler: the build compiles the
+templates, and `vue` (a development dependency) only supplies the compiler
+and the types. `main.ts` installs `frameUi(frame)`, which gives the
+components the application's language and folder dialog. The page uses
+`InfoBar`, `BaseSwitch`, `BaseInput`, `RefreshButton`, `StatusBadge` and
+`ProgressBar`; buttons and the version lists keep the UI kit's classes
+(`btn`, `card-list`/`card-row`).
+
+`index.html` links the application's UI kit, `../../__hanafubuki/ui.css`,
+then the components' styles, `../../__hanafubuki/ui-components.css`, before
+its own stylesheet (Vite leaves the links as they are); `web/src/style.css`
+is only the page's layout. Nothing in it sizes the document or clips its
 overflow: the frame follows the page's height, and the instance's
 management section scrolls it.
 
-`web/hanafubuki/frame.d.ts` is the frame client's typings, an unedited copy
-of Hanafubuki's `sdk/frame/frame.d.ts` (the SDK is not published as a
-package, and the page must build from this repository alone);
-`tsconfig.json` maps the `hanafubuki-frame` import to it. Refresh it from a
-Hanafubuki checkout when the client changes:
+The typings are unedited copies of Hanafubuki's (the SDK is not published as
+a package, and the page must build from this repository alone):
+`web/hanafubuki/frame.d.ts` is `sdk/frame/frame.d.ts`, and
+`web/hanafubuki/ui.d.ts` is `sdk/ui/ui.d.ts` (generated there by `bun run
+export:frontend-interfaces`); `tsconfig.json` maps `hanafubuki-frame` and
+`hanafubuki-ui` to them. Refresh them from a Hanafubuki checkout when the
+client or the bundle changes:
 
 ```sh
 cp ../Hanafubuki/sdk/frame/frame.d.ts web/hanafubuki/frame.d.ts
+cp ../Hanafubuki/sdk/ui/ui.d.ts web/hanafubuki/ui.d.ts
 ```
 
 ## Packaging
@@ -416,14 +439,18 @@ npm 配置和 `~/.dsh`。
   `dsh-global` 实例的 dsh 数据在 `~/.dsh`，删除实例不会删除它。
 - 设置：可配置 npm 源（如 `https://registry.npmmirror.com`）和 Node.js 下载镜像
   （如 `https://cdn.npmmirror.com/binaries/node`）。
-- 版本页面：使用 Hanafubuki 提供给框架的界面套件（`__hanafubuki/ui.css`）中的
-  按钮、输入框、卡片列表、信息栏、复选框和进度条，跟随应用的主题、强调色和语言。
+- 版本页面：使用 Hanafubuki 提供给框架的 Vue 组件包（`__hanafubuki/ui.js`，与
+  `__hanafubuki/vue.js` 共用一个 Vue 运行时）中的信息栏、开关、输入框、刷新按钮、
+  状态徽章和进度条，以及界面套件（`__hanafubuki/ui.css`）中的按钮和卡片列表，
+  跟随应用的主题、强调色和语言。
 - 更新：清单的 `[update] url` 指向最新 GitHub Release 的 `latest.json`。Hanafubuki
   每天及点击「检查更新」时读取它，有新版本时在扩展卡片上提供更新，但不会自动安装；
   开发链接不检查更新。0.3.0 之前的版本没有更新源，需手动安装一次 0.3.0。
-- 需要 Hanafubuki 0.3.32 及以上（低于 0.4）。
+- 需要 Hanafubuki 0.3.34 及以上（低于 0.4），即提供框架组件包的版本。
 - 开发：`web/` 中执行 `npm ci && npm run build` 构建版本页面；以开发链接安装时，
   文件夹内不能有符号链接（`web/.npmrc` 已设置 `bin-links=false`）。
-  `web/hanafubuki/frame.d.ts` 是 Hanafubuki `sdk/frame/frame.d.ts` 的原样副本。
+  `web/hanafubuki/frame.d.ts` 与 `web/hanafubuki/ui.d.ts` 分别是 Hanafubuki
+  `sdk/frame/frame.d.ts` 与 `sdk/ui/ui.d.ts` 的原样副本；构建时 `vue`、组件包和
+  框架客户端都不打包，而是引用 `../../__hanafubuki/` 下宿主提供的文件。
   `python scripts/package.py` 生成安装包和 `latest.json`，发布时将两者一起上传到
   Release `v<version>`。
