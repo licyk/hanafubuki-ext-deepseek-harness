@@ -6,7 +6,7 @@
 // client (`status`, `versions`, `copyHome`); the page has no network of its
 // own. The controls are the application's own components, which the host
 // serves every frame (`__hanafubuki/ui.js`, installed in main.ts).
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import * as client from "hanafubuki-frame";
 import type { FrameError } from "hanafubuki-frame";
 import { BaseInput, BaseSwitch, InfoBar, ProgressBar, RefreshButton, StatusBadge } from "hanafubuki-ui";
@@ -44,6 +44,12 @@ const showPrereleases = ref(true);
 const showAll = ref(false);
 const message = ref("");
 const failed = ref(false);
+// What the bar shows: kept while it closes, so it collapses with the text and
+// severity it had rather than an empty info bar.
+const shown = ref<{ text: string; severity: "info" | "error" }>({ text: "", severity: "info" });
+watch([message, failed], ([text, isFailed]) => {
+  if (text) shown.value = { text, severity: isFailed ? "error" : "info" };
+});
 const busy = ref(false);
 const refreshing = ref(false);
 // The application's language, which the host sends with the theme; the
@@ -183,7 +189,7 @@ onMounted(() => {
     </section>
 
     <!-- A bar comes and goes through `open`, which collapses it away. -->
-    <InfoBar :open="Boolean(message)" :severity="failed ? 'error' : 'info'" :message="message" />
+    <InfoBar :open="Boolean(message)" :severity="shown.severity" :message="shown.text" />
     <InfoBar :open="Boolean(status?.running)" severity="warning" :message="t('running')" />
     <p v-if="status && !status.running" class="hint">{{ t("confirmHint") }}</p>
 
