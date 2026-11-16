@@ -115,6 +115,13 @@ The rest of this section, and [Isolation](#isolation), are about `dsh`.
 
 Then create a **DeepSeek Harness** instance, install it and start it.
 
+With a Hanafubuki host that supports `defaultName`, leaving the instance name
+blank uses `DeepSeek Harness` plus a random suffix; a name you enter takes
+priority. To customize that prefix in a development link, edit the top-level
+`defaultName` in `types/dsh.toml` and reload the extension. This field is
+independent of the localized display name. Update the host to a build with
+`defaultName` support to use it; older hosts keep their previous naming behavior.
+
 ## Updates
 
 The manifest's `[update] url` is the newest GitHub release's `latest.json`
@@ -418,6 +425,9 @@ DeepSeek Harness（`@deepseek-ai/dsh`），与你的 npm 配置和 `~/.dsh` 隔�
 「DeepSeek Harness（全局 npm 安装）」类型（`dsh-global`）原样接入，使用你的 Node.js、
 npm 配置和 `~/.dsh`。
 
+- 默认名称：支持 `defaultName` 的宿主在名称留空时使用 `DeepSeek Harness` 并附加随机后缀；
+  手动输入名称优先。开发链接可修改 `types/dsh.toml` 顶层的 `defaultName` 后重新加载扩展，
+  该字段独立于本地化显示名称。需更新到支持 `defaultName` 的宿主构建；旧宿主仍使用原有命名逻辑。
 - 参数：`version`（默认 `latest`，可填 `next`、`alpha` 或确切版本）、
   `nodeVersion`（默认 `24`，可填主版本号、`lts`、`latest` 或确切版本；dsh 需要
   Node.js 24.9.0 及以上；更新时重新解析，`24` 会升级到更新的 24.x）。

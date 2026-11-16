@@ -1,6 +1,7 @@
 # The backend (backend/main.py) plans the install, the update and the `web`
 # server's command; this file holds what is static.
 name = "dsh"
+defaultName = "DeepSeek Harness"
 provider = "backend"
 displayName = { key = "ext.io.github.licyk.deepseek-harness.type.name" }
 description = { key = "ext.io.github.licyk.deepseek-harness.type.description" }
