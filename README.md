@@ -62,12 +62,16 @@ The rest of this section, and [Isolation](#isolation), are about `dsh`.
 - **Terminal**: the instance's terminal opens in `core` with the instance's
   `dsh`, `npm` and `node` first on `PATH` ([Isolation](#isolation)).
 - **Versions page**: the instance's management has a *DeepSeek Harness
-  versions* section: the installed dsh and Node.js (the managed one, "your
-  own (vX)", or "uses the system's Node.js and dsh (`<prefix>`)"), the npm
-  dist-tags and versions, and **Switch**, which asks Hanafubuki to update the
-  instance with that version (Hanafubuki asks you to confirm); dsh's home
-  and, once, **Copy from ~/.dsh**. It is built from Hanafubuki's own Vue
-  components and UI kit, which the application serves to frames, so it
+  versions* section, laid out as the application's own version panel is: the
+  installed dsh and the Node.js in use (the managed one, "your own (vX)", or
+  "uses the system's Node.js and dsh (`<prefix>`)"), **Check for updates**
+  with its verdict, the dsh and Node.js versions it compared, and when it
+  answered; then one row per npm version with **Switch** (which asks
+  Hanafubuki to update the instance with that version, after a confirmation);
+  then the dist-tags, dsh's home and, once, **Copy from ~/.dsh**. The Node.js
+  version is changed in **Maintenance** instead, where it is one of the
+  install parameters. Every control is Hanafubuki's own Vue component or a
+  class of its UI kit, which the application serves to frames, so the page
   looks like the application and follows its theme, accent and language.
 - **Copy from ~/.dsh** (also the instance's *Copy from ~/.dsh* operation):
   copies `~/.dsh` into `dsh-home` and `~/.agents` into `agents-home`, with
@@ -84,19 +88,21 @@ The rest of this section, and [Isolation](#isolation), are about `dsh`.
 
 ## Requirements
 
-- Hanafubuki 0.3.35 or later (below 0.4): backend-provided types with
+- Hanafubuki 0.4 or later (below 0.5): backend-provided types with
   `preview`, component labels, `[environment]` (with `unset`), the
   `terminal` operation, `strip` and `replace`, `{host.python}`,
   `{extension.root}` and `{instance.root}`; external components and the
   component map in provider calls and in the instances `instances.ofType`
-  lists; `captured` readiness for a declared
-  server role; `[[discovery]]` signatures with `external`;
-  `sdWebuiAllInOne` for a Python backend; the frame client's
-  `updateInstance` for the **Switch** button, its `locale()`, the UI kit
-  (`__hanafubuki/ui.css`) and the component bundle (`__hanafubuki/vue.js`,
-  `ui.js` and `ui-components.css`, 0.3.34) for the versions page;
-  `[update]`; and the `update-check` operation (`provider.checkUpdate`,
-  0.3.35).
+  lists; `rebuildable` components and `recreateComponents` in
+  `provider.installPlan`; `captured` readiness for a declared server role;
+  `[[discovery]]` signatures with `external`; `sdWebuiAllInOne` for a
+  Python backend; the frame client's `updateInstance` for the **Switch**
+  button, its `locale()`, the UI kit (`__hanafubuki/ui.css`) and the
+  component bundle (`__hanafubuki/vue.js`, `ui.js` and
+  `ui-components.css`) for the versions page; `[update]`; the
+  `update-check` operation (`provider.checkUpdate`, with its
+  `components`); and `instances.configuration` for the values the page
+  reports.
 - Windows, macOS or Linux on x64 or arm64 (the platforms Node.js publishes).
 - Network access to nodejs.org and registry.npmjs.org (or the mirrors you
   set).
@@ -461,17 +467,26 @@ npm 配置和 `~/.dsh`。
   `dsh-global` 实例的 dsh 数据在 `~/.dsh`，删除实例不会删除它。
 - 设置：可配置 npm 源（如 `https://registry.npmmirror.com`）和 Node.js 下载镜像
   （如 `https://cdn.npmmirror.com/binaries/node`）。
-- 版本页面：使用 Hanafubuki 提供给框架的 Vue 组件包（`__hanafubuki/ui.js`，与
-  `__hanafubuki/vue.js` 共用一个 Vue 运行时）中的信息栏、开关、输入框、刷新按钮、
-  状态徽章和进度条，以及界面套件（`__hanafubuki/ui.css`）中的按钮和卡片列表，
-  跟随应用的主题、强调色和语言。
+- 版本页面：按应用自身「版本」面板的样式组织——先是一行已安装事实，再是每个已发布
+  版本一行的版本列表（当前版本在行内标出，其余行各带「切换」），最后是 dsh 主目录。
+  它使用 Hanafubuki 提供给框架的 Vue 组件包（`__hanafubuki/ui.js`，与
+  `__hanafubuki/vue.js` 共用一个 Vue 运行时）中的信息栏、开关、刷新按钮、状态徽章、
+  空状态、加载状态、更新提示和进度条，以及界面套件（`__hanafubuki/ui.css`）的样式，
+  跟随应用的主题、强调色和语言。**Node.js 版本不在此页面修改**：`nodeVersion` 是安装
+  参数，在实例「维护」面板的安装参数处修改（可勾选重建 Node.js 组件），页面只报告正在
+  使用的 Node.js 与之请求的版本。
 - 更新：清单的 `[update] url` 指向最新 GitHub Release 的 `latest.json`。Hanafubuki
   每天及点击「检查更新」时读取它，有新版本时在扩展卡片上提供更新，但不会自动安装；
   开发链接不检查更新。0.3.0 之前的版本没有更新源，需手动安装一次 0.3.0。
 - 实例更新检查：`dsh` 类型声明了 `update-check`，Hanafubuki 每天（设置中开启时）及在实例卡片上点击「检查更新」时，
-  会让后端比较已安装的 dsh 与「更新」将安装的版本（确切版本按原样，dist-tag 按注册表当前指向）；
-  固定为当前版本的实例不会提示更新。全局 npm 安装（`dsh-global`）由你自行更新，不做检查。
-- 需要 Hanafubuki 0.3.35 及以上（低于 0.4），即支持 `update-check` 的版本。
+  会让后端比较已安装的 dsh 与「更新」将安装的版本（确切版本按原样，dist-tag 按注册表当前指向），
+  并一并报告它管理的 dsh 与 Node.js 两个组件（0.4 的 `components`）；固定为当前版本的实例不会提示更新。
+  版本页面也有自己的「检查更新」：它按实例记录的 `version` 与 `nodeVersion` 给出同样的结论、
+  两个组件各自的版本与检查时间，`refresh` 时重新读取注册表而非使用缓存。全局 npm 安装
+  （`dsh-global`）由你自行更新，不做检查。
+- 需要 Hanafubuki 0.4 及以上（低于 0.5）：`rebuildable` 组件与 `provider.installPlan` 的
+  `recreateComponents`、`provider.checkUpdate` 的 `components`、`provider.manage` 的操作表单
+  `values`、帧客户端的 `updateInstance(values, mode)`，以及 `instances.configuration`。
 - 开发：`web/` 中执行 `npm ci && npm run build` 构建版本页面；以开发链接安装时，
   文件夹内不能有符号链接（`web/.npmrc` 已设置 `bin-links=false`）。
   `web/hanafubuki/frame.d.ts` 与 `web/hanafubuki/ui.d.ts` 分别是 Hanafubuki

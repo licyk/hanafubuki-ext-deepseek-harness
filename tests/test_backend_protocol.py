@@ -50,6 +50,9 @@ class FakeHost:
         self.listed = listed
         self.running = False
         self.fail_fetches = False
+        # What the instance's install values are, as `instances.configuration`
+        # answers them (Hanafubuki 0.4 reads them for the versions page).
+        self.configuration: dict[str, Any] = {}
         self.refused: set[str] = set()
         self.fetched: list[str] = []
         self.calls: list[tuple[str, Any]] = []
@@ -111,6 +114,13 @@ class FakeHost:
             assert params == {}
             view = {"name": "dsh", "path": str(self.instance_root), "running": self.running, **self.listed}
             reply["result"] = {"instances": [view]}
+        elif method == "instances.configuration":
+            reply["result"] = {
+                "values": self.configuration,
+                "launchValues": {},
+                "valuesTruncated": False,
+                "launchValuesTruncated": False,
+            }
         elif method == "download.fetch" and self.fail_fetches:
             reply["error"] = {"code": -32003, "message": "network unreachable"}
         elif method == "download.fetch":
@@ -291,6 +301,44 @@ class BackendProtocolTest(unittest.TestCase):
         self.assertTrue(steps[0]["replace"])
         self.assertNotIn("empty_dir", json.dumps(steps))
 
+    def test_a_reinstall_downloads_node_only_when_the_user_rebuilds_it(self) -> None:
+        fake_node(self.root / "node" / "bin" / "node", "24.22.3")
+        (self.root / "core" / "hanafubuki-install.txt").write_text("version=latest\nnodeVersion=24\nnode=24.22.3\n")
+
+        def reinstall(recreated: list[str]) -> list[dict[str, Any]]:
+            params = {
+                "type": TYPE_ID,
+                "kind": "reinstall",
+                "recreateComponents": recreated,
+                "values": {"version": "0.2.2", "nodeVersion": "24"},
+                "instance": self.instance,
+            }
+            answer = self.host.request("provider.installPlan", params)
+            self.assertIn("result", answer, answer)
+            return answer["result"]["steps"]
+
+        # The user did not ask to rebuild `node`: the release is kept.
+        self.assertEqual([step["kind"] for step in reinstall([])], ["write-file", "run", "write-file"])
+        # The host empties a named component before the steps run, so `node`
+        # named there must be downloaded again even though it is the same release.
+        steps = reinstall(["node"])
+        self.assertEqual([step["kind"] for step in steps], ["download", "write-file", "run", "write-file"])
+        self.assertIn("/v24.22.3/", steps[0]["url"])
+
+    def test_offline_a_reinstall_that_rebuilds_node_fails_instead_of_keeping_it(self) -> None:
+        fake_node(self.root / "node" / "bin" / "node", "24.11.0")
+        (self.root / "core" / "hanafubuki-install.txt").write_text("version=latest\nnodeVersion=24\nnode=24.11.0\n")
+        self.host.settings = {"nodeMirror": "https://offline.example/node"}
+        self.host.fail_fetches = True
+        params = {
+            "type": TYPE_ID,
+            "kind": "reinstall",
+            "recreateComponents": ["node"],
+            "values": {"nodeVersion": "24"},
+            "instance": self.instance,
+        }
+        self.assertEqual(self.host.request("provider.installPlan", params)["error"]["code"], -32003)
+
     @NO_SHELL_NODE
     def test_an_external_node_is_never_downloaded_into(self) -> None:
         mine = self.directory / "my-node"
@@ -351,9 +399,13 @@ class BackendProtocolTest(unittest.TestCase):
         package.mkdir(parents=True)
         (package / "package.json").write_text(json.dumps({"name": "@deepseek-ai/dsh", "version": "0.2.2-rc.1"}))
         (self.root / "core" / "hanafubuki-install.txt").write_text("version=next\nnodeVersion=24\nnode=24.11.0\n")
+        # The page reports the `nodeVersion` the install values ask for, which
+        # it reads from the host; the maintenance panel is where it changes.
+        self.host.configuration = {"version": "next", "nodeVersion": "26"}
         status = self.status()
         self.assertEqual(status["installed"], "0.2.2-rc.1")
         self.assertEqual(status["node"], "24.11.0")
+        self.assertEqual(status["nodeVersion"], "26")
         self.assertEqual(status["requested"], {"version": "next", "nodeVersion": "24"})
         self.assertEqual(status["nodeSource"], "managed")
         self.assertEqual(status["homePath"], str(self.root / "dsh-home"))
@@ -363,6 +415,75 @@ class BackendProtocolTest(unittest.TestCase):
         self.assertEqual(set(status["strings"]["en"]), set(status["strings"]["zh"]))
         params = {"frame": "versions", "method": "status", "params": None, "context": {"instanceId": "other"}}
         self.assertEqual(self.host.request("ui.frame.call", params)["error"]["code"], -32003)
+
+    def test_frame_status_without_the_hosts_configuration_falls_back_to_the_marker(self) -> None:
+        self.install_dsh("0.2.2")
+        (self.root / "core" / "hanafubuki-install.txt").write_text("version=latest\nnodeVersion=24\nnode=24.11.0\n")
+        # A host that answers no `instances.configuration` (before 0.4): the
+        # marker's own record stands in, so the page still names a version.
+        self.host.refused.add("instances.configuration")
+        self.assertEqual(self.status()["nodeVersion"], "24")
+
+    def check_from_the_frame(self, refresh: bool = False) -> dict[str, Any]:
+        params = {
+            "frame": "versions",
+            "method": "checkUpdate",
+            "params": {"refresh": refresh},
+            "context": {"instanceId": "dsh-1"},
+        }
+        answer = self.host.request("ui.frame.call", params)
+        self.assertIn("result", answer, answer)
+        return answer["result"]
+
+    def test_the_page_checks_for_updates_with_the_instances_own_values(self) -> None:
+        self.install_dsh("0.2.2")
+        (self.root / "core" / "hanafubuki-install.txt").write_text("version=latest\nnodeVersion=24\nnode=24.11.0\n")
+        # The values the instance was installed with, which the host reports.
+        self.host.configuration = {"version": "next", "nodeVersion": "26"}
+        found = self.check_from_the_frame()
+        self.assertEqual((found["current"], found["latest"], found["hasUpdate"]), ("0.2.2", "0.4.0-rc.1", True))
+        self.assertEqual(found["requested"], {"version": "next", "nodeVersion": "26"})
+        self.assertEqual(
+            [(part["name"], part["hasUpdate"]) for part in found["components"]],
+            [("core", True), ("node", True)],
+        )
+        # It says when it answered, so the page can date its verdict.
+        self.assertRegex(found["checkedAt"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
+        self.assertTrue(found["updatable"])
+        self.assertFalse(found["running"])
+
+    def test_a_running_instance_is_reported_as_not_updatable(self) -> None:
+        self.install_dsh("0.2.2")
+        self.host.running = True
+        found = self.check_from_the_frame()
+        self.assertTrue(found["running"])
+        # The verdict stands; only acting on it waits for a stop.
+        self.assertTrue(found["hasUpdate"])
+        self.assertFalse(found["updatable"])
+
+    def test_the_check_reads_the_registry_again_when_the_page_refreshes(self) -> None:
+        self.install_dsh("0.2.2")
+        self.check_from_the_frame()
+        reads = sum("dsh" in url for url in self.host.fetched)
+        self.check_from_the_frame()
+        # Cached: the second answer reads the document it already has.
+        self.assertEqual(sum("dsh" in url for url in self.host.fetched), reads)
+        self.check_from_the_frame(refresh=True)
+        self.assertGreater(sum("dsh" in url for url in self.host.fetched), reads)
+
+    def test_the_check_says_what_it_lacks(self) -> None:
+        # Nothing is installed: there is no version to compare against.
+        answer = self.host.request(
+            "ui.frame.call",
+            {
+                "frame": "versions",
+                "method": "checkUpdate",
+                "params": None,
+                "context": {"instanceId": "dsh-1"},
+            },
+        )
+        self.assertEqual(answer["error"]["code"], -32003)
+        self.assertIn("尚未安装", answer["error"]["message"])
 
     def check(self, values: dict[str, Any]) -> dict[str, Any]:
         params = {"type": TYPE_ID, "values": values, "instance": self.instance}
@@ -375,17 +496,49 @@ class BackendProtocolTest(unittest.TestCase):
 
     def test_the_update_check_follows_the_version_value(self) -> None:
         self.install_dsh("0.2.2")
-        self.assertEqual(self.check({})["result"], {"current": "0.2.2", "latest": "0.3.0", "hasUpdate": True})
+        found = self.check({})["result"]
+        self.assertEqual((found["current"], found["latest"], found["hasUpdate"]), ("0.2.2", "0.3.0", True))
         self.assertEqual(
-            self.check({"version": "next"})["result"],
-            {"current": "0.2.2", "latest": "0.4.0-rc.1", "hasUpdate": True},
+            [(part["name"], part["hasUpdate"]) for part in found["components"]],
+            [("core", True), ("node", False)],
+        )
+        self.assertEqual(
+            self.check({"version": "next"})["result"]["latest"],
+            "0.4.0-rc.1",
         )
         # Pinned to what it has: Update would change nothing.
-        self.assertEqual(
-            self.check({"version": "0.2.2"})["result"], {"current": "0.2.2", "latest": "0.2.2", "hasUpdate": False}
-        )
+        pinned = self.check({"version": "0.2.2"})["result"]
+        self.assertEqual((pinned["current"], pinned["latest"], pinned["hasUpdate"]), ("0.2.2", "0.2.2", False))
         # The registry's document is fetched once and then read from the cache.
         self.assertEqual(sum("dsh" in url for url in self.host.fetched), 1)
+
+    def test_the_update_check_reports_node_beside_dsh(self) -> None:
+        self.install_dsh("0.3.0")
+        (self.root / "core" / "hanafubuki-install.txt").write_text(
+            "version=latest\nnodeVersion=24\nnode=24.22.3\n"
+        )
+        self.assertEqual(
+            self.check({})["result"]["components"],
+            [
+                {"name": "core", "current": "0.3.0", "latest": "0.3.0", "hasUpdate": False},
+                {"name": "node", "current": "24.22.3", "latest": "24.22.3", "hasUpdate": False},
+            ],
+        )
+        # `nodeVersion` 26 is a newer Node.js than the instance has: the check
+        # reports it, and a component update alone marks the instance updatable.
+        found = self.check({"nodeVersion": "26"})["result"]
+        self.assertTrue(found["hasUpdate"])
+        self.assertFalse(found["components"][0]["hasUpdate"])
+        self.assertEqual(found["components"][1]["latest"], "26.13.1")
+
+    def test_a_users_own_node_is_not_a_component_the_extension_updates(self) -> None:
+        self.install_dsh("0.2.2")
+        mine = self.directory / "my-node"
+        sent = instance(self.root / "core", mine, node_external=True)
+        found = self.host.request(
+            "provider.checkUpdate", {"type": TYPE_ID, "values": {}, "instance": sent}
+        )["result"]
+        self.assertNotIn("components", found)
 
     def test_the_update_check_reads_the_cache_offline_and_says_what_it_lacks(self) -> None:
         self.assertIn("尚未安装", self.check({})["error"]["message"])

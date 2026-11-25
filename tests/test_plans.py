@@ -174,19 +174,20 @@ class PlanTest(unittest.TestCase):
         )
         self.assertEqual(steps[2]["command"][-1], "@deepseek-ai/dsh@latest")
 
-    def test_update_keeps_node_only_for_the_release_it_resolves_to(self) -> None:
+    def test_a_plan_keeps_node_only_for_the_release_it_resolves_to(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             node = Path(directory) / "node"
             (node / "bin").mkdir(parents=True)
             (node / "bin" / "node").write_text("")
             marker = plans.Marker("latest", "24", "24.11.0")
             program = LINUX.path(LINUX.node, components(Path(directory) / "core", node))
-            self.assertTrue(plans.keeps_node("update", marker, "24.11.0", program))
+            self.assertTrue(plans.keeps_node(marker, "24.11.0", program, []))
             # `24` now resolves to a newer 24.x: the update downloads it.
-            self.assertFalse(plans.keeps_node("update", marker, "24.22.3", program))
-            self.assertFalse(plans.keeps_node("install", marker, "24.11.0", program))
-            self.assertFalse(plans.keeps_node("update", None, "24.11.0", program))
-            self.assertFalse(plans.keeps_node("update", marker, "24.11.0", node / "node.exe"))
+            self.assertFalse(plans.keeps_node(marker, "24.22.3", program, []))
+            self.assertFalse(plans.keeps_node(None, "24.11.0", program, []))
+            self.assertFalse(plans.keeps_node(marker, "24.11.0", node / "node.exe", []))
+            # A reinstall the user asked to rebuild `node` empties it first.
+            self.assertFalse(plans.keeps_node(marker, "24.11.0", program, ["node"]))
 
         kept = plans.install_steps(LINUX, {"version": "0.2.2"}, None, "24.11.0")
         self.assertEqual([step["kind"] for step in kept], ["write-file", "run", "write-file"])

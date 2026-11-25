@@ -10,7 +10,10 @@
  * Do not edit: change the sources and regenerate.
  */
 
-import type { Component, DefineSetupFnComponent, Plugin, SlotsType } from "vue";
+import type { CSSProperties, Component, ComputedRef, DefineSetupFnComponent, Plugin, Ref, SlotsType, VNode, WatchSource } from "vue";
+
+/** What an `AsyncRegion` holds: its caller decides. */
+export type AsyncRegionState = "loading" | "error" | "empty" | "ready";
 
 /** One choice in the dropdown. */
 export interface BaseDropdownOption {
@@ -50,11 +53,219 @@ export interface BaseTabItem {
   panelId?: string;
 }
 
+/** One action in the shared menu. */
+export interface ContextMenuItem {
+  id: string;
+  label: string;
+  icon?: Component;
+  /**
+   * Destructive. Drawn in the danger colour, and always set off from the
+   * actions before it by a divider; callers list it last (spec §7.10).
+   */
+  danger?: boolean;
+  disabled?: boolean;
+  /**
+   * Why the action is unavailable right now. Setting it disables the item and
+   * shows the reason as the item's tooltip, so an unavailable action explains
+   * itself instead of just greying out.
+   */
+  disabledReason?: string;
+  /** Draw a divider above this item, starting a new group. */
+  separator?: boolean;
+}
+
+export interface CornerStatusEntry {
+  id: string;
+  /** `info` is a notice to read about the panel's own work (spec §7.16). */
+  kind: "progress" | "success" | "info" | "failure";
+  /** The card's title: what the operation is or what happened. */
+  label?: string;
+  /** The detail line beneath it: the current step, a summary, or the error. */
+  message?: string;
+  progress?: number | null;
+  quantifiableProgress?: {
+    completed: number;
+    total: number;
+  } | null;
+  extraCount?: number;
+  extraTitle?: string;
+  interactive?: boolean;
+  actionTitle?: string;
+  dismissible?: boolean;
+  /**
+   * A finished entry that takes itself away, and by which rule (spec §7.16).
+   * Ignored on a failure, which persists until it is dismissed.
+   */
+  lifetime?: StatusLifetime;
+}
+
 /** The four message severities, in the order a region stacks them (spec §7.15). */
 export type InfoBarSeverity = "error" | "warning" | "success" | "info";
 
+/** A run of items under one heading. Without a label it has no heading. */
+export interface NavListGroup<T extends NavListItem = NavListItem> {
+  id: string;
+  label?: string;
+  items: readonly T[];
+}
+
+/** The minimum an entry needs to be listed; callers extend it freely. */
+export interface NavListItem {
+  /** Unique within the list. */
+  id: string;
+  /** Accessible name, and the visible label unless a slot replaces it. */
+  label: string;
+  /** 16px leading glyph of the default row. */
+  icon?: Component;
+  /** Tooltip. A collapsed rail names every item through it. */
+  title?: string;
+  /**
+   * Unavailable for a reason the tooltip explains. The item stays focusable,
+   * so the reason can be found (spec §2.3), but it never activates.
+   */
+  disabled?: boolean;
+}
+
+/** Tone applied to the optional leading icon chip. */
+export type PanelHeaderIconTone = "default" | "brand" | "warning" | "danger";
+
+/** Tokens removed together, as one row with one remove button. */
+export interface RemovableTokenGroup {
+  id: string;
+  tokens: readonly string[];
+}
+
 /** A state's colour. `neutral` is a state with nothing to call attention to. */
 export type StatusTone = "success" | "danger" | "warning" | "info" | "accent" | "neutral";
+
+/**
+ * The icon size scale (spec §4). Every lucide icon's `:size` is one of these
+ * steps, so two icons in the same role are the same size wherever they appear.
+ * Pick by role, not by pixel:
+ *
+ *   12  informational only, never on its own a click target: inside a badge,
+ *       a chip, or an inline status
+ *   16  inline with body text, in menus, list rows, and navigation items, and
+ *       in every 24px and 32px button
+ *   20  in a 40px button, beside a dialog or window title, and the glyph of an
+ *       inline message
+ *   24  the boxed glyph of a panel header, and large tiles
+ *   32  the glyph of an empty, loading, or error state
+ *
+ * `bun run check:frontend` rejects a literal `:size` that is not a step.
+ */
+export declare const ICON_SIZES: readonly [12, 16, 20, 24, 32];
+
+/**
+ * The renderer is stateless between calls except for these collectors, which
+ * the fence rule fills during a single synchronous `render` call.
+ */
+export type MarkdownRenderer = (source: string, options: MarkdownRenderOptions) => RenderedMarkdown;
+
+export interface MarkdownRenderOptions {
+  /** Localized label for the copy button on fenced code. */
+  copyLabel: string;
+}
+
+export interface RenderedMarkdown {
+  html: string;
+  /** Fenced code contents in render order, addressed by `data-code-index`. */
+  codeBlocks: string[];
+}
+
+export type IconSize = (typeof ICON_SIZES)[number];
+
+/**
+ * The options a form's host lists for a field's `optionsSource`, already
+ * labelled; `available` is false until the host has read them, and
+ * `loading` while it is reading.
+ */
+export interface HostOptions {
+  options: readonly BaseDropdownOption[];
+  loading: boolean;
+  available: boolean;
+}
+
+/**
+ * How long a finished status card stays before it takes itself away (spec
+ * §7.16), named by role rather than by duration:
+ *
+ *   linger  a finished operation with nothing left to read — "Saved",
+ *           "Runtime ready" — that only confirms what the user expected.
+ *   toast   a success or information report with text to read: a summary of
+ *           what a scan found, where the files went.
+ *
+ * Errors and warnings have no lifetime. They persist until the user dismisses
+ * them or the problem resolves, so the status cards ignore a lifetime on one.
+ */
+export type StatusLifetime = "linger" | "toast";
+
+export declare const SCHEMA_FIELD_KINDS: readonly ["text", "number", "boolean", "select", "multiselect", "path", "secret", "slider", "textarea"];
+
+/**
+ * When a settings editor may submit a field, as declared by Rust.
+ *
+ * - `change` — discrete value; submit as soon as it changes.
+ * - `blur` — free text or number; submit once the field is left or Enter is
+ *   pressed, never per keystroke.
+ * - `manual` — explicit Save required, because persisting the value has a side
+ *   effect an intermediate commit would make visible.
+ *
+ * Rust owns this classification because it owns validation; the frontend must
+ * not infer it from the control type.
+ */
+export type SchemaCommitMode = "change" | "blur" | "manual";
+
+/** A field equal to a value, or any or all of several conditions. */
+export type SchemaCondition =
+  { key: string; equals: SchemaValue } | { any: SchemaCondition[] } | { all: SchemaCondition[] };
+
+export interface SchemaField {
+  key: string;
+  kind: SchemaFieldKind;
+  label: SchemaText;
+  help?: SchemaText;
+  options?: SchemaOption[];
+  /** A list the form's host fetches at run time (an install catalog's `branches`). */
+  optionsSource?: string;
+  min?: number;
+  max?: number;
+  step?: number;
+  pathKind?: "directory" | "file";
+  /** No value is a choice: a select or boolean offers it as `unsetLabel`, text as a blank. */
+  nullable?: boolean;
+  unsetLabel?: SchemaText;
+  required?: boolean;
+  default?: SchemaValue;
+  requiredWhen?: SchemaCondition;
+  disabledWhen?: SchemaCondition;
+  /** While this does not hold the field is hidden and its value is not submitted. */
+  visibleWhen?: SchemaCondition;
+  disabledReason?: SchemaText;
+  /** It has a working default, so a creation form keeps it out of the way. */
+  advanced?: boolean;
+  /** Settings only: when its editor submits it. */
+  commit?: SchemaCommitMode;
+  /**
+   * Settings only: Rust rejects a patch as a whole, so every dirty member of
+   * a group is submitted together rather than restating the rule here.
+   */
+  patchGroup?: string;
+}
+
+export type SchemaFieldKind = (typeof SCHEMA_FIELD_KINDS)[number];
+
+export interface SchemaOption {
+  value: string;
+  label: SchemaText;
+}
+
+/** A message key of the locale tables, or text by locale (`en`, `zh`, …). */
+export type SchemaText =
+  | { kind: "key"; key: string; params?: Record<string, string> }
+  | { kind: "literal"; text: Record<string, string> };
+
+export type SchemaValue = boolean | number | string | string[];
 
 /**
  * Where a tooltip bubble sits relative to the control it describes.
@@ -70,6 +281,12 @@ export interface TooltipPosition {
   left: number;
   placement: TooltipPlacement;
 }
+
+/**
+ * Opens a link of a rendered document (`MarkdownDocument`) outside the page,
+ * which never navigates to it: `url` is absolute and http, https or mailto.
+ */
+export type LinkOpener = (url: string) => void;
 
 /** Asks the user for a path; resolves with it, or `null` when they cancelled. */
 export type PathPicker = (request: PathPickRequest) => Promise<string | null>;
@@ -99,6 +316,273 @@ export interface UiStrings {
 /** The host's strings; a component used where none were provided is a host's bug. */
 export declare function useUiStrings(): UiStrings;
 
+/**
+ * The token's resolved duration in milliseconds. A role token gives its
+ * duration, the time it starts with.
+ * Reads the supplied element, or this document's root (the frame's root in a frame).
+ *
+ * An unresolved token is 0: a `var()` that names nothing makes the transition
+ * using it invalid, so nothing animates and there is nothing to wait for.
+ */
+export declare function motionDurationMs(token: MotionDurationToken | MotionRoleToken, element?: Element): number;
+
+/**
+ * A role's duration and curve, for a Web Animation that must move exactly as
+ * the stylesheet's transitions on the same role do.
+ * Reads the current document unless an element with local overrides is supplied.
+ */
+export declare function motionTiming(token: MotionRoleToken, element?: Element): MotionTiming;
+
+/**
+ * Whether the user asked for reduced motion, read at the moment of asking.
+ *
+ * Stylesheet motion needs no check — the global rule in `primitives.css` settles
+ * it. This is for motion a script drives itself (a frame loop, an inverted
+ * position released on the next frame, a leave it would wait for), which the
+ * stylesheet cannot reach. Ask each time the motion is about to start, so a
+ * preference changed in the OS takes effect with the next one. An environment
+ * without `matchMedia` has no preference to honour.
+ */
+export declare function prefersReducedMotion(): boolean;
+
+/**
+ * The motion tokens from `src/styles/tokens.css`, for motion a script drives
+ * itself.
+ *
+ * A script that sets an inline transition names a role token in the value
+ * (`transform var(--motion-indicator)`) so it moves on its row of the motion
+ * table (spec §9.4). When it also has to know when that transition is over —
+ * to clear state once a tile has landed, say — it reads the same token here
+ * rather than keeping a second copy of the number that can drift from it, and
+ * Web Animations read a role's whole timing through `motionTiming`.
+ */
+export type MotionDurationToken =
+  | "--motion-short1"
+  | "--motion-short2"
+  | "--motion-short3"
+  | "--motion-short4"
+  | "--motion-medium1"
+  | "--motion-medium2"
+  | "--motion-medium4"
+  | "--motion-long2"
+  | "--motion-spatial-fast";
+
+/** The role tokens (spec §9.4): a duration and its curve. */
+export type MotionRoleToken =
+  | "--motion-state"
+  | "--motion-selection"
+  | "--motion-indicator"
+  | "--motion-grow"
+  | "--motion-shrink"
+  | "--motion-grow-far"
+  | "--motion-shrink-far"
+  | "--motion-progress"
+  | "--motion-phase";
+
+/** A role's resolved timing, in the form Web Animations take it. */
+export interface MotionTiming {
+  /** Milliseconds; 0 when the token does not resolve. */
+  duration: number;
+  /** The curve, or `linear` when the token does not resolve. */
+  easing: string;
+}
+
+/**
+ * Follow a box's natural height using the shared grow/shrink roles. Call in
+ * component setup; unmount releases its pin and cancels pending travel.
+ * Supply a source for an in-place render, or use hold/release for an out-in
+ * swap. The target belongs to this component even when it lives outside it.
+ */
+export declare function useSizeFollow(target: () => HTMLElement | null, source?: WatchSource): SizeFollow;
+
+/** Size-follow controls owned by the component that created them. */
+export interface SizeFollow {
+  hold(): void;
+  release(): void;
+  swapHooks: SizeFollowSwapHooks;
+}
+
+/** Bind these hooks to an out-in transition inside the followed box. */
+export interface SizeFollowSwapHooks {
+  onBeforeLeave(): void;
+  onAfterLeave(): Promise<void>;
+  onBeforeEnter(): void;
+  onEnter(): void;
+}
+
+/** Elements to capture, read before the layout changes. */
+export declare function captureLayout(elements: Iterable<HTMLElement>): LayoutCapture;
+
+/**
+ * Play every captured element from where it was to where the layout now puts
+ * it. Call once the change has rendered. Elements without a capture have just
+ * arrived and have nowhere to travel from; their own entrance shows them.
+ *
+ * Under reduced motion each element is simply where it now belongs: the new
+ * order is the information, and the travel only how it is delivered.
+ */
+export declare function playFlip(capture: LayoutCapture, elements: Iterable<HTMLElement>, options?: FlipOptions): void;
+
+/**
+ * Drop an element's travel at once, so it rests where the layout puts it: to
+ * measure the layout itself (a drag reading its cells), or before giving the
+ * element a motion of its own.
+ * Call before removing an element whose manually started FLIP is still running.
+ */
+export declare function settle(element: HTMLElement): void;
+
+/**
+ * A leave hook that takes the leaving element out of the flow at the size and
+ * place it has, so the elements around it close its room while it fades
+ * instead of waiting for it to vanish and then jumping (spec §9.4: status
+ * card, list row tiles). Its positioned parent keeps it where it was, pinned to
+ * the edges the parent's content is docked to: a stack that grows upward from
+ * its bottom edge pins its leaving card to the bottom, which stays put as the
+ * stack shrinks.
+ *
+ *   <TransitionGroup name="fade" @before-leave="liftLeaving">
+ */
+export declare function liftLeavingAt(edges?: LiftEdges): (element: Element) => void;
+
+/** `liftLeavingAt` pinned to the top and left: a layout that grows downward. */
+export declare const liftLeaving: (element: Element) => void;
+
+/** Where elements are on screen, including anything still travelling. */
+export type LayoutCapture = Map<Element, DOMRect>;
+
+export interface FlipOptions {
+  /** An element whose place is not the layout's to decide: one the pointer carries. */
+  skip?: Element | null;
+}
+
+/** The edges of its positioned parent a lifted element stays pinned to. */
+export interface LiftEdges {
+  vertical?: "top" | "bottom";
+  horizontal?: "left" | "right";
+}
+
+/** Position one persistent indicator; only selection changes should request travel. */
+export declare function usePersistentIndicator(): PersistentIndicator;
+
+/**
+ * Where `element` sits inside `container`, from layout offsets. Offsets ignore
+ * transforms, so a container still scaling in (a window arriving) does not
+ * skew the place.
+ */
+export declare function offsetWithin(element: HTMLElement, container: HTMLElement): { x: number; y: number };
+
+/**
+ * One indicator for a whole list — a tab underline, a selection pill — placed
+ * by measurement on the item it marks, and moving between items as a
+ * persistent indicator (spec §9.4).
+ *
+ * Only a change of the marked item travels. Anything else that moves the item
+ * — the list filtering, a row above growing, the pane resizing, a font
+ * arriving — puts the indicator in its new place at once, and so does the
+ * first placement: a list does not animate on arrival. A place it already has
+ * leaves a travel under way alone. Reduced motion needs nothing here: the
+ * role's duration is a token the global rule zeroes.
+ *
+ * Bind `style` on the indicator, which is positioned at its container's
+ * top-left corner; render it only while `placed`.
+ */
+export interface IndicatorPlace {
+  /** Offset from the container's left edge, in px. */
+  x: number;
+  /** Offset from the container's top edge, in px. */
+  y: number;
+  /** Width in px, for an indicator that takes the size of what it marks. */
+  width?: number;
+}
+
+/** Bind style to one positioned indicator, and render it while placed. */
+export interface PersistentIndicator {
+  placed: ComputedRef<boolean>;
+  style: ComputedRef<CSSProperties | undefined>;
+  moveTo(next: IndicatorPlace | null, travel: boolean): void;
+}
+
+/**
+ * Pick the forward or backward variant of a directional transition to match
+ * the direction of travel.
+ *
+ * The forward variant brings the incoming screen in from the right, which reads
+ * as moving forward. Used for every switch it also makes going *back* to a
+ * screen on the left look like going forward again — the motion contradicts
+ * the navigation. This watches the active value's position in a known order and
+ * selects the mirrored backward variant when the user moves left.
+ *
+ * `pattern` names the transition (spec §9.4): `axis` for screens in a
+ * hierarchy or sequence, `lateral` for peer panels such as tabs.
+ *
+ * The watcher is pre-flush, so the name is settled before the render that
+ * actually swaps the element.
+ *
+ * @param active Currently selected value.
+ * @param order Values in the order they are presented, left to right.
+ * @param pattern Which directional transition to name.
+ */
+export declare function useDirectionalTransition(active: () => string, order: () => readonly string[], pattern?: "axis" | "lateral"): Ref<string>;
+
+/**
+ * Bind all hooks alongside name="expand" on an `.expand-region` containing
+ * `.expand-clip`, using the shared kit CSS. The stylesheet owns transition
+ * completion; the after/cancel hooks release the gap's Web Animations.
+ */
+export declare const expandGapHooks: ExpandGapHooks;
+
+/** Hooks for an expand region; cancellation releases its owned Web Animations. */
+export interface ExpandGapHooks {
+  onEnter(element: Element): void;
+  onAfterEnter(element: Element): void;
+  onEnterCancelled(element: Element): void;
+  onLeave(element: Element): void;
+  onAfterLeave(element: Element): void;
+  onLeaveCancelled(element: Element): void;
+}
+
+/**
+ * A surface the parent's state decides — a dialog for a pending deletion, a
+ * prompt, a decision — kept mounted until its own exit has run (spec §7.12,
+ * §9.4: a surface owns its exit).
+ *
+ * Unmounting a surface with `v-if` tears its transition down with it, so a
+ * commit that clears the parent's state would cut the dialog off mid-screen.
+ * Instead the parent mounts it while `present`, shows it while `open`, and
+ * lets it go when it reports that it has left:
+ *
+ *   const deletion = useDeferredPresence(
+ *     () => pendingDelete.value,
+ *     () => (pendingDelete.value = null),
+ *   );
+ *
+ *   <ConfirmDialog
+ *     v-if="deletion.present"
+ *     :open="deletion.open"
+ *     :title="… deletion.value …"
+ *     @close="deletion.closed"
+ *   />
+ *
+ * `value` is what the surface shows: the source's latest value, kept through
+ * the exit so the dialog does not empty as it fades. A source that holds again
+ * during the exit re-opens the same surface rather than letting it finish.
+ *
+ * `clear` empties the source. It runs when the surface closed on its own — a
+ * Cancel, Escape, or a smoke click — while the source still held, so the
+ * parent's state follows the user's answer. A required surface with nothing to
+ * clear omits it, and a source that still holds then mounts the surface again.
+ */
+export declare function useDeferredPresence<T>(source: () => T | null | undefined | false, clear?: () => void): DeferredPresence<T>;
+
+/** A retained value and mount state; the caller supplies the exit animation. */
+export interface DeferredPresence<T> {
+  readonly present: boolean;
+  readonly open: boolean;
+  readonly value: T | null;
+  /** Call after the surface's exit finishes, never when it only starts closing. */
+  closed(): void;
+}
+
 /** The version of this bundle's exports; within it they are only added to. */
 export declare const UI_API_VERSION = 1;
 
@@ -116,7 +600,9 @@ export type UiStringKey =
   | "common.labels.moreCount"
   | "common.state.disabled"
   | "common.state.enabled"
-  | "common.state.notSet";
+  | "common.state.notSet"
+  | "common.states.off"
+  | "common.states.on";
 
 /** What `frameUi` uses of the frame client (`__hanafubuki/frame.js`). */
 export interface FrameUiClient {
@@ -128,6 +614,13 @@ export interface FrameUiClient {
 export interface FrameUiOptions {
   /** Where menus and tooltips are teleported: `body` by default. */
   teleportTo?: string | HTMLElement;
+  /**
+   * What a click on a `MarkdownDocument`'s link does with its address (http,
+   * https or mailto). A frame cannot open one itself and the frame client
+   * offers no opener, so by default a link does nothing; a page with a
+   * backend may hand the address to it here.
+   */
+  openLink?: LinkOpener;
 }
 
 /**
@@ -138,6 +631,95 @@ export interface FrameUiOptions {
  * `kind: "file"` opens nothing.
  */
 export declare function frameUi(client: FrameUiClient, options?: FrameUiOptions): Plugin;
+
+/**
+ * A region whose content arrives: loading, then the content — or an empty
+ * state, or an error state that replaces a region that could not load. Moving
+ * between them is a state swap (spec §9.4): what the region holds fades out,
+ * then the next fades in, with no movement, so no caller chains
+ * `LoadingState`, `EmptyState`, and its content with `v-if`s of its own
+ * (spec §7.17).
+ *
+ * A load that settles before `LOADING_SHOW_DELAY_MS` never showed its
+ * indicator, so the content simply appears: there was nothing on screen to
+ * swap out, and a fade would only delay it. The first render does not
+ * animate either.
+ *
+ * The caller decides the state; each one has a slot, and `loading` defaults
+ * to the shared `LoadingState` with `loadingText`. Where the shape of what
+ * arrives is known — rows, a card, a list of a usual length — the `loading`
+ * slot draws it at once in `Skeleton`s instead, so the content lands in the
+ * room kept for it; the region is `aria-busy` meanwhile, since a stencil says
+ * nothing to a screen reader. The region lays its slot
+ * out as a column at its parent's gap, so wrapping content in it changes no
+ * spacing.
+ *
+ * A region sized by its content keeps its height through an animated swap and
+ * then travels to the new state's (size follow, spec §9.4), so what follows it
+ * glides instead of jumping when, say, a spinner gives way to a long list. A
+ * region that fills the room its parent gives it has nowhere to travel.
+ */
+export declare const AsyncRegion: DefineSetupFnComponent<
+  {
+    state: AsyncRegionState;
+    /**
+     * The loading label, a short "-ing…" phrase (spec §7.17).
+     */
+    loadingText?: string | undefined;
+  },
+  {},
+  SlotsType<{
+    loading?: (props: {}) => any;
+    error?: (props: {}) => any;
+    empty?: (props: {}) => any;
+    default?: (props: {}) => any;
+  }>
+>;
+
+/**
+ * A section that opens in place under its summary (spec §9.4, expand): a
+ * trigger that is the whole summary row, with the turning chevron at its end,
+ * and what it discloses beneath. The `summary` slot is the trigger's content
+ * and the default slot what it discloses, which stays mounted while closed, so
+ * a form inside it keeps its state. `v-model` is whether it is open; `toggle`
+ * says the user changed it.
+ *
+ * `plain` drops the well: the section is then a line of text that opens onto
+ * more text, which is what the conversation's own disclosures — a thinking
+ * block, a compaction — are. A box around each of them would read as a stack of
+ * widgets rather than as the transcript's prose.
+ */
+export declare const BaseCollapsible: DefineSetupFnComponent<
+  {
+    disabled?: boolean | undefined;
+    /**
+     * No well: the section is a line in the flow, not a surface of its own.
+     */
+    plain?: boolean | undefined;
+    /**
+     * A section that opens in place under its summary (spec §9.4, expand): a
+     * trigger that is the whole summary row, with the turning chevron at its end,
+     * and what it discloses beneath. The `summary` slot is the trigger's content
+     * and the default slot what it discloses, which stays mounted while closed, so
+     * a form inside it keeps its state. `v-model` is whether it is open; `toggle`
+     * says the user changed it.
+     *
+     * `plain` drops the well: the section is then a line of text that opens onto
+     * more text, which is what the conversation's own disclosures — a thinking
+     * block, a compaction — are. A box around each of them would read as a stack of
+     * widgets rather than as the transcript's prose.
+     */
+    modelValue?: boolean | undefined;
+  },
+  {
+    toggle: (...args: [open: boolean]) => any;
+    "update:modelValue": (...args: [value: boolean]) => any;
+  },
+  SlotsType<{
+    summary?: (props: {}) => any;
+    default?: (props: {}) => any;
+  }>
+>;
 
 /**
  * Colour picker primitive: a saturation/value field, a hue slider, and a hex
@@ -168,6 +750,42 @@ export declare const BaseColorPicker: DefineSetupFnComponent<
     hexLabel: string;
   },
   {
+    commit: (...args: [value: string]) => any;
+    "update:modelValue": (...args: [value: string]) => any;
+  },
+  SlotsType<{}>
+>;
+
+/**
+ * `BaseColorPicker` in a floating panel anchored to a trigger.
+ *
+ * Teleported to `<body>` and positioned in viewport coordinates, for the same
+ * reason `BaseDropdown` is: an absolutely positioned panel is laid out inside
+ * the nearest scrolling ancestor, so in a scrolling settings page it extends
+ * that region's scroll height. It never covered anything — it made the page
+ * taller, which reads as the layout stretching to accommodate it.
+ *
+ * Owning the panel here rather than in the caller is what makes the
+ * outside-click test correct too: once the panel is in `<body>` it is no longer
+ * inside the trigger's subtree, so a caller checking "did the click land in my
+ * element" would close the popover on every click *inside* it.
+ */
+export declare const BaseColorPickerPopover: DefineSetupFnComponent<
+  {
+    open: boolean;
+    /**
+     * Element the panel is positioned against, and returned to on close.
+     */
+    anchor: HTMLElement | null;
+    modelValue: string;
+    disabled?: boolean | undefined;
+    label: string;
+    fieldLabel: string;
+    hueLabel: string;
+    hexLabel: string;
+  },
+  {
+    close: (...args: []) => any;
     commit: (...args: [value: string]) => any;
     "update:modelValue": (...args: [value: string]) => any;
   },
@@ -322,7 +940,15 @@ export declare const BaseInput: DefineSetupFnComponent<
     commit: (...args: []) => any;
     "update:modelValue": (...args: [value: string | number | null]) => any;
   },
-  SlotsType<{}>
+  SlotsType<{
+    /**
+     * A control at the field's trailing end — the reveal button of a secret
+     * field. It sits inside the box over the input's own room, so the field
+     * keeps the width it has without the control; the input keeps its text out
+     * from under it with a trailing inset.
+     */
+    trailing?: (props: any) => any;
+  }>
 >;
 
 /**
@@ -341,10 +967,10 @@ export declare const BaseInput: DefineSetupFnComponent<
  * Presentation only — no i18n. `label` names the group for assistive tech, and
  * `emptyText` is shown when there is nothing to choose from.
  */
-export declare const BaseSelectableList: DefineSetupFnComponent<
+export declare const BaseSelectableList: { <T extends BaseSelectableItem = BaseSelectableItem>(props: InstanceType<DefineSetupFnComponent<
   {
     modelValue: string;
-    items: readonly BaseSelectableItem[];
+    items: readonly T[];
     /**
      * Accessible name for the group.
      */
@@ -358,10 +984,61 @@ export declare const BaseSelectableList: DefineSetupFnComponent<
     "update:modelValue": (...args: [value: string]) => any;
   },
   SlotsType<{
-    item?: (props: { item: BaseSelectableItem; selected: boolean; }) => any;
+    item?: (props: { item: T; selected: boolean; }) => any;
   }>
->;
+>>["$props"]): VNode; new <T extends BaseSelectableItem = BaseSelectableItem>(): InstanceType<DefineSetupFnComponent<
+  {
+    modelValue: string;
+    items: readonly T[];
+    /**
+     * Accessible name for the group.
+     */
+    label: string;
+    /**
+     * Shown in place of the list when there is nothing to choose from.
+     */
+    emptyText: string;
+  },
+  {
+    "update:modelValue": (...args: [value: string]) => any;
+  },
+  SlotsType<{
+    item?: (props: { item: T; selected: boolean; }) => any;
+  }>
+>> };
 
+/**
+ * Drag-to-adjust slider for a bounded numeric setting.
+ *
+ * Drawn by the application rather than delegating to `input[type=range]`. A
+ * native range is rendered by the engine's shadow DOM, so its track geometry —
+ * and in particular how far the thumb travels — differs between the WebViews
+ * this app ships on. Owning the geometry is what makes the control identical
+ * everywhere, and it is why the thumb now reaches both ends.
+ *
+ * ---- Why the thumb reaches the ends ----
+ *
+ * The thumb is a circle of width `--slider-thumb`, so its *centre* can only
+ * travel between `thumb/2` and `width - thumb/2` without the thumb hanging off
+ * the control. The bug this replaces came from mapping the pointer across the
+ * full width while drawing the thumb across that shorter travel: the two
+ * disagreed by half a thumb at each end, so the last sliver of the track was
+ * unreachable and the handle visibly stopped short of the end it was dragged
+ * to. Here one constant, `travel`, is both the rendering domain and the
+ * pointer-mapping domain, so pixel and value are exact inverses and `min`/`max`
+ * are reachable at — and only at — the ends of the rail.
+ *
+ * The fill is drawn to the thumb's centre. At `max` the thumb covers exactly
+ * the remaining half-thumb of rail, so the track reads as completely full.
+ *
+ * ---- Contract ----
+ *
+ * `update:modelValue` fires continuously while dragging so the caller can show
+ * a live value; `change` fires once the value settles (pointer released, key
+ * pressed), which is the one a caller should persist on. Presentation only: no
+ * i18n and no business logic. `label` names the control for assistive tech, and
+ * `formatValue` supplies the spoken value.
+ */
 export declare const BaseSlider: DefineSetupFnComponent<
   {
     modelValue: number;
@@ -505,6 +1182,17 @@ export declare const CardHeader: DefineSetupFnComponent<
   }>
 >;
 
+/**
+ * Selectable radio card, adapted from Comfy-Desktop's `ChoiceCard.vue`
+ * (MIT). Used to present a small set of mutually exclusive options (e.g.
+ * WebUI family) as cards rather than a dropdown, matching Comfy's
+ * install-flow type selection.
+ *
+ * It is a Card (spec §5.2, §7.21): the card fill and stroke, with hover a fill
+ * change only. Selection is the shared `RadioMarker` checked plus an accent
+ * edge — no accent wash over the card, which would spend the accent on a large
+ * surface (spec §2.5).
+ */
 export declare const ChoiceCard: DefineSetupFnComponent<
   {
     label: string;
@@ -517,6 +1205,130 @@ export declare const ChoiceCard: DefineSetupFnComponent<
     select: (...args: []) => any;
   },
   SlotsType<{}>
+>;
+
+/**
+ * The shared menu flyout (spec §7.10): a teleported, keyboard-accessible
+ * action list placed at a point — the pointer for a right-click, or just under
+ * a button that opens it. Presentation-only: the caller supplies
+ * already-translated labels and interprets the selected item id.
+ *
+ * Interaction contract. It opens with focus inside it: on its first item (or
+ * its last, for a menu opened with Up) when the control that opened it had
+ * keyboard focus, on the menu itself after a
+ * pointer press, as a native menu does. Arrow keys move between items and
+ * wrap, Home and End jump to the ends, and typing a letter moves to the next
+ * item that starts with it. Unavailable items stay reachable, so the reason
+ * they carry can be read, but do nothing. Enter or Space activates. It opens
+ * at the point and flips to the other side of it where the window has no room.
+ *
+ * Dismissal is the shared light dismissal (`useLightDismiss`): an outside
+ * press, Escape, Tab, the window losing focus, any scroll outside it, or a
+ * resize closes it, since its point no longer means anything. Closing, by
+ * dismissal or by choosing an item, hands focus back to the control that had
+ * it when the menu opened.
+ *
+ * Opening it again somewhere else while it is open — a right-click on another
+ * row — moves it there. That press closes the menu and the new one reopens it
+ * in the same tick, so `open` never drops; the new point arrives as new
+ * coordinates instead.
+ *
+ * The owner keeps it mounted and says whether it is `open`, rather than
+ * mounting it only while open: the menu emerges from its point as it opens
+ * and fades where it stands as it closes (`popover-pop`), and a component that
+ * is unmounted has no leave to play. While it fades it keeps the items and the
+ * point it was showing, and no longer takes the pointer.
+ */
+export declare const ContextMenu: DefineSetupFnComponent<
+  {
+    /**
+     * Whether the menu is showing; it opens and closes with this.
+     */
+    open: boolean;
+    items: ContextMenuItem[];
+    x: number;
+    y: number;
+    /**
+     * A button that toggles this menu handles its own pointer presses.
+     */
+    anchor?: HTMLElement | null | undefined;
+    /**
+     * The item a keyboard-opened menu starts on: the first (Down or Enter on
+     * the button that opens it) or the last (Up), as a native menu does.
+     */
+    initialFocus?: "first" | "last" | undefined;
+  },
+  {
+    close: (...args: []) => any;
+    present: (...args: [visible: boolean]) => any;
+    select: (...args: [id: string]) => any;
+  },
+  SlotsType<{}>
+>;
+
+/**
+ * The status cards of one panel, docked to its bottom-end corner (spec
+ * §7.16): work the panel started, and how it ended.
+ *
+ * Each card is an overlay — the overlay fill, a surface stroke, the tooltip
+ * shadow — whose tone shows in its glyph and its edge, never in a wash over
+ * the whole card. The title says what, the detail line says how far or why,
+ * and a running operation carries its bar inside the card. An interactive
+ * entry's body opens where the work is reported in full (Task Center).
+ *
+ * A finished entry may take itself away after its `lifetime`; a failure never
+ * does. The countdown holds while the pointer is over the card or focus is
+ * inside it, so a card never vanishes while it is read or acted on.
+ *
+ * At most four cards show at once. More fold into a "+N more" row at the far
+ * end of the stack, which opens the whole stack until it is back to four. The
+ * cards nearest the corner stay — callers list the most current work last.
+ */
+export declare const CornerStatusStack: DefineSetupFnComponent<
+  {
+    entries: readonly CornerStatusEntry[];
+    dismissLabel: string;
+  },
+  {
+    dismiss: (...args: [id: string]) => any;
+    open: (...args: [id: string]) => any;
+  },
+  SlotsType<{}>
+>;
+
+/**
+ * What a detail page says about the thing it details, before its fields: a
+ * glyph and a name, a sentence about it, and the badges naming what it is —
+ * its kind, its state, its version.
+ *
+ * A collection's record page (an MCP server, a Provider), and any other page
+ * whose subject is one entry, opens with this rather than a bare paragraph: a
+ * summary inline among the fields reads as another field's help text, and it
+ * leaves the record's own name nowhere the page can be read from at a glance.
+ *
+ * Presentation only: the caller owns the words, the glyph and the badges, and
+ * a page with nothing to say shows nothing — a summary with no title draws no
+ * card.
+ */
+export declare const DetailSummary: DefineSetupFnComponent<
+  {
+    /**
+     * The subject's name; the card is not drawn without it.
+     */
+    title?: string | undefined;
+    /**
+     * A sentence about the subject, under its name.
+     */
+    description?: string | undefined;
+    /**
+     * The subject's glyph, beside its name.
+     */
+    icon?: Component | undefined;
+  },
+  {},
+  SlotsType<{
+    badges?: (props: {}) => any;
+  }>
 >;
 
 /**
@@ -646,6 +1458,33 @@ export declare const FormSection: DefineSetupFnComponent<
 >;
 
 /**
+ * A glyph changing what it says inside its control — copy to check, send to
+ * stop, a spinner and the glyph it stands in for, a status icon changing tone
+ * (spec §9.4, icon swap). The outgoing glyph and the incoming one share one
+ * cell and cross-fade within `short2`, the quick cross-fade M3 allows, so the
+ * control keeps its size and nothing beside it moves.
+ *
+ * `swapKey` names which glyph is showing; the slot renders it:
+ *
+ *   <IconSwap :swap-key="copied ? 'done' : 'copy'">
+ *     <Check v-if="copied" :size="16" aria-hidden="true" />
+ *     <Copy v-else :size="16" aria-hidden="true" />
+ *   </IconSwap>
+ *
+ * A control that becomes a different control, with its own label or width
+ * (Launch becomes Stop), is keyed by its action instead (`ToolbarSlot`).
+ */
+export declare const IconSwap: DefineSetupFnComponent<
+  {
+    swapKey: string;
+  },
+  {},
+  SlotsType<{
+    default?: (props: {}) => any;
+  }>
+>;
+
+/**
  * An inline message about a page, panel, or form: something failed, needs
  * attention, or is worth knowing (spec §7.15, WinUI InfoBar, Fluent
  * MessageBar). Field-level problems belong to `FormField`, and the progress or
@@ -699,6 +1538,54 @@ export declare const InfoBar: DefineSetupFnComponent<
 >;
 
 /**
+ * The full text behind a message — Rust's error under an `InfoBar` that says
+ * what failed — opened in place inside it (spec §9.4, expand). A plain-text
+ * disclosure on the message's tint, where a card would not sit: the chevron
+ * turns with `aria-expanded`, and the preserved text scrolls in place below.
+ */
+export declare const InfoBarDetails: DefineSetupFnComponent<
+  {
+    /**
+     * The preserved text, selectable.
+     */
+    text: string;
+    /**
+     * The toggle's label; "Details" by default.
+     */
+    label?: string | undefined;
+  },
+  {},
+  SlotsType<{}>
+>;
+
+/**
+ * A help affordance that collapses long-form help text into a single icon, shown
+ * at the help tooltip width.
+ * The icon reveals the text in a `Tooltip` on hover and keyboard focus, so a
+ * dense form stays uncluttered while the guidance remains one interaction
+ * away.
+ *
+ * Presentation-only and i18n-free: callers pass already-translated `text`.
+ * `label` is the accessible name for the icon button (defaults to `text`), so
+ * the affordance satisfies the icon-only-button accessible-name requirement
+ * while the visible hover description is the tooltip itself. Pass the default
+ * slot to render richer visible content (e.g. inline `<code>`); `text` still
+ * provides the assistive-tech description in that case.
+ */
+export declare const InfoTooltip: DefineSetupFnComponent<
+  {
+    text: string;
+    label?: string | undefined;
+    size?: 12 | 16 | 20 | 24 | 32 | undefined;
+    placement?: "bottom" | "top" | undefined;
+  },
+  {},
+  SlotsType<{
+    default?: (props: {}) => any;
+  }>
+>;
+
+/**
  * The trailing row of a list revealed in batches (`useIncrementalReveal`):
  * when it nears the viewport the next batch loads, and until then it says so.
  *
@@ -721,6 +1608,295 @@ export declare const LoadMoreSentinel: DefineSetupFnComponent<
   },
   {},
   SlotsType<{}>
+>;
+
+/**
+ * A centered spinner and label for a content area that is still loading
+ * (spec §7.17). A spinner means the region is blocked; non-blocking work
+ * reports through a progress bar instead.
+ *
+ * Anti-flash: a wait shorter than `LOADING_SHOW_DELAY_MS` shows nothing, so
+ * quick work never flashes an indicator. The region itself renders at once and
+ * keeps its size throughout, so the layout does not shift when the spinner
+ * arrives — only the spinner and label wait.
+ *
+ * There is deliberately no minimum time on screen once it shows (spec §7.17).
+ * The swap from it to whatever replaces it — content, an empty state, an error
+ * state — is `AsyncRegion`'s, which callers wrap their regions in rather than
+ * removing this with a `v-if` of their own.
+ *
+ * Presentation-only and i18n-free: the caller passes an already-translated
+ * `text`, a short "-ing…" phrase such as "Loading instances…".
+ * `role="status"` + `aria-live="polite"` announces the label when it appears;
+ * the region is present from the start so the announcement is heard. Under
+ * reduced motion the spinner stands still and the label carries the state.
+ */
+export declare const LoadingState: DefineSetupFnComponent<
+  {
+    text?: string | undefined;
+    /**
+     * Spinner glyph size in px.
+     */
+    size?: 12 | 16 | 20 | 24 | 32 | undefined;
+  },
+  {},
+  SlotsType<{}>
+>;
+
+/**
+ * A painted Markdown document: an Agent message, or an extension panel's
+ * `markdown` block.
+ *
+ * The HTML comes from `markdown`, which escapes every tag in the source, so
+ * this component never injects authored markup. It owns the two behaviours
+ * the rendered document needs from its host: a link never navigates the page
+ * it is in but goes to the host's `LinkOpener` (the OS browser in the
+ * application; in a frame, whatever its page gave `frameUi`, else nowhere),
+ * and fenced code can be copied.
+ *
+ * `caret` marks a document still streaming with the shared blinking caret
+ * (`.caret-blink`, spec §9.6), at the end of its last block where the next
+ * text will arrive.
+ *
+ * i18n-free: the caller passes the copy button's labels.
+ */
+export declare const MarkdownDocument: DefineSetupFnComponent<
+  {
+    source: string;
+    /**
+     * Trusted host renderer; authored HTML must remain escaped.
+     */
+    renderer?: MarkdownRenderer | undefined;
+    caret?: boolean | undefined;
+    /**
+     * Fade in the text that arrived with the latest render. Only for a document
+     * that grows as it streams: the fade is put on the text nodes the previous
+     * render did not have, so text already on screen never re-animates.
+     */
+    reveal?: boolean | undefined;
+    /**
+     * The copy button's label on fenced code.
+     */
+    copyLabel: string;
+    /**
+     * The copy button's label for a moment after it copied.
+     */
+    copiedLabel: string;
+  },
+  {},
+  SlotsType<{}>
+>;
+
+/**
+ * The one bubble every `title` in this window is drawn as.
+ *
+ * A single host rather than a component per control: only one tooltip is ever
+ * on screen, and the element it belongs to is whatever the pointer happens to
+ * be over. Mounted once per shell, it starts the takeover for as long as it
+ * lives and gives every borrowed `title` back when it does not.
+ */
+export declare const NativeTooltipHost: DefineSetupFnComponent<
+  {},
+  {},
+  SlotsType<{}>
+>;
+
+/**
+ * The navigation and master list of spec §7.9: settings navigation, the manage
+ * rail, the instance list, the Task Center list, and the conversation list are
+ * all this one pattern.
+ *
+ * It owns what every one of those lists must get the same: the row backplate
+ * and its hover, pressed, and current fills; the selection pill; one tab stop
+ * with arrow keys inside the list; and the ARIA that says what "current"
+ * means. What a row *says* is the caller's — the default row is an icon and a
+ * label, and a rich row (an instance with its status, a task with its
+ * progress) replaces it through the default slot.
+ *
+ * `semantics` is the one real difference between the five lists:
+ *
+ *   navigation  the item is where you are (`aria-current="page"`); rows may
+ *               carry their own action buttons beside the item
+ *   selection   the item is the chosen row of a master/detail pair
+ *               (`listbox`/`option`, `aria-selected`); options cannot contain
+ *               controls, so these rows carry no actions
+ *
+ * and `activation` is the keyboard's: `focus` moves the current item with the
+ * arrow keys, for lists whose content is cheap to show; `manual` only moves
+ * focus, and Enter or Space opens the item, for lists whose items open heavy
+ * content.
+ *
+ * Rows that come and go open and close in place (spec §9.4, list row): each
+ * row is an `expand` region of a `TransitionGroup`, so the rows after it
+ * follow it and no consumer wraps its rows. A row is also a `.reveal-host`,
+ * so a control in its actions slot can be a `.hover-reveal`.
+ */
+export declare const NavList: { <T extends NavListItem = NavListItem>(props: InstanceType<DefineSetupFnComponent<
+  {
+    /**
+     * An ungrouped list. Ignored when `groups` is given.
+     */
+    items?: readonly T[] | undefined;
+    groups?: readonly NavListGroup<T>[] | undefined;
+    /**
+     * The current (navigation) or selected (selection) item's id.
+     */
+    current: string | null;
+    semantics: "navigation" | "selection";
+    activation?: "focus" | "manual" | undefined;
+    /**
+     * Accessible name of a selection list's `listbox`. A navigation list is
+     * named by the landmark its caller puts it in.
+     */
+    label?: string | undefined;
+    /**
+     * The row whose item is replaced by the `editor` slot (an in-place rename).
+     */
+    editingId?: string | null | undefined;
+  },
+  {
+    select: (...args: [id: string]) => any;
+  },
+  SlotsType<{
+    /**
+     * The row's content, inside the item. Replaces the default icon and label.
+     */
+    default?: (props: { item: T; current: boolean; }) => any;
+    /**
+     * The default row's glyph, for a caller that decorates it.
+     */
+    icon?: (props: { item: T; current: boolean; }) => any;
+    /**
+     * The default row's label text.
+     */
+    label?: (props: { item: T; current: boolean; }) => any;
+    /**
+     * Buttons beside a navigation item. Only the row holding the list's tab stop
+     * is in the tab order: give each button `:tabindex="tabbable ? 0 : -1"`.
+     */
+    actions?: (props: { item: T; current: boolean; tabbable: boolean; }) => any;
+    /**
+     * Replaces the item of the row named by `editingId`.
+     */
+    editor?: (props: { item: T; }) => any;
+    /**
+     * A group heading's content; defaults to the group's label.
+     */
+    header?: (props: { group: NavListGroup<T>; }) => any;
+    /**
+     * Shown under a group's heading while the group has no items.
+     */
+    "group-empty"?: (props: { group: NavListGroup<T>; }) => any;
+  }>
+>>["$props"]): VNode; new <T extends NavListItem = NavListItem>(): InstanceType<DefineSetupFnComponent<
+  {
+    /**
+     * An ungrouped list. Ignored when `groups` is given.
+     */
+    items?: readonly T[] | undefined;
+    groups?: readonly NavListGroup<T>[] | undefined;
+    /**
+     * The current (navigation) or selected (selection) item's id.
+     */
+    current: string | null;
+    semantics: "navigation" | "selection";
+    activation?: "focus" | "manual" | undefined;
+    /**
+     * Accessible name of a selection list's `listbox`. A navigation list is
+     * named by the landmark its caller puts it in.
+     */
+    label?: string | undefined;
+    /**
+     * The row whose item is replaced by the `editor` slot (an in-place rename).
+     */
+    editingId?: string | null | undefined;
+  },
+  {
+    select: (...args: [id: string]) => any;
+  },
+  SlotsType<{
+    /**
+     * The row's content, inside the item. Replaces the default icon and label.
+     */
+    default?: (props: { item: T; current: boolean; }) => any;
+    /**
+     * The default row's glyph, for a caller that decorates it.
+     */
+    icon?: (props: { item: T; current: boolean; }) => any;
+    /**
+     * The default row's label text.
+     */
+    label?: (props: { item: T; current: boolean; }) => any;
+    /**
+     * Buttons beside a navigation item. Only the row holding the list's tab stop
+     * is in the tab order: give each button `:tabindex="tabbable ? 0 : -1"`.
+     */
+    actions?: (props: { item: T; current: boolean; tabbable: boolean; }) => any;
+    /**
+     * Replaces the item of the row named by `editingId`.
+     */
+    editor?: (props: { item: T; }) => any;
+    /**
+     * A group heading's content; defaults to the group's label.
+     */
+    header?: (props: { group: NavListGroup<T>; }) => any;
+    /**
+     * Shown under a group's heading while the group has no items.
+     */
+    "group-empty"?: (props: { group: NavListGroup<T>; }) => any;
+  }>
+>> };
+
+/**
+ * The single header lockup for every panel, section, and card across the app.
+ * It replaces the divergent `.panel-header` / `.title-lockup` / `.card-heading`
+ * / `.section-header` markup that each surface used to hand-roll, so a manage
+ * panel, a settings section, and a maintenance card now read as one system.
+ *
+ * Presentation-only and i18n-free: callers pass already-translated `title` and
+ * `description`. An optional leading `icon` renders at 24px in a 40px box
+ * (suppress the box with `boxed = false` for lighter card headings, where the
+ * glyph drops to 16px); `#status` and `#actions` slots occupy the trailing
+ * edge, actions 8px apart; `#subtitle` adds custom content under the title.
+ * A panel title is Subtitle type; a level-4 heading, nested under one, is a
+ * card title in Body Strong.
+ */
+export declare const PanelHeader: DefineSetupFnComponent<
+  {
+    title: string;
+    description?: string | undefined;
+    /**
+     * Collapse the description into a help button beside the title.
+     */
+    descriptionAsHelp?: boolean | undefined;
+    icon?: Component | undefined;
+    /**
+     * Heading element level for the title (document outline correctness).
+     */
+    level?: 2 | 3 | 4 | undefined;
+    iconTone?: PanelHeaderIconTone | undefined;
+    /**
+     * Render the icon inside a bordered chip.
+     */
+    boxed?: boolean | undefined;
+    /**
+     * Keep the actions beside the title however narrow the header gets.
+     *
+     * The default drops them to their own row below a threshold, which is right
+     * for a group of buttons that would otherwise overflow. A header carrying a
+     * single compact control does not need that, and giving it a full row of its
+     * own wastes the space next to a short title.
+     */
+    compactActions?: boolean | undefined;
+  },
+  {},
+  SlotsType<{
+    icon?: (props: {}) => any;
+    help?: (props: {}) => any;
+    subtitle?: (props: {}) => any;
+    status?: (props: {}) => any;
+    actions?: (props: {}) => any;
+  }>
 >;
 
 /**
@@ -868,6 +2044,170 @@ export declare const RefreshButton: DefineSetupFnComponent<
 >;
 
 /**
+ * Tokens the user can take out one group at a time — the launch arguments the
+ * WebUI does not recognise. A message about the form, so an `InfoBar` (spec
+ * §7.15) that opens while there is something to remove and closes once the
+ * last group is gone. A removed group fades out of the row while the others
+ * close its gap (spec §9.4, list row).
+ */
+export declare const RemovableTokenGroups: DefineSetupFnComponent<
+  {
+    groups: readonly RemovableTokenGroup[];
+    title: string;
+    description?: string | undefined;
+    removeLabel: string;
+    disabled?: boolean | undefined;
+  },
+  {
+    remove: (...args: [id: string]) => any;
+  },
+  SlotsType<{}>
+>;
+
+/**
+ * The control of one schema field, by its kind: what a settings row and an
+ * install form's field both hold. It shapes values only as the `@/ui`
+ * primitives do (blank text as `null` when nullable, numbers from number
+ * inputs); validation stays in Rust.
+ *
+ * `update:modelValue` is a draft edit. `commit` says how the value settled —
+ * `change` for a discrete choice, `blur` for text or a number left or
+ * confirmed with Enter, `picked` for a path from the native dialog — and the
+ * host decides whether that submits it.
+ *
+ * A field whose options its host lists at run time (`optionsSource`) takes
+ * them as `hostOptions`; it is unavailable until the host has read them.
+ */
+export declare const SchemaFieldControl: DefineSetupFnComponent<
+  {
+    field: SchemaField;
+    modelValue: unknown;
+    id: string;
+    disabled?: boolean | undefined;
+    hostOptions?: HostOptions | undefined;
+    /**
+     * The accessible name of a control that carries its own.
+     */
+    label: string;
+  },
+  {
+    commit: (...args: [reason: "blur" | "change" | "picked"]) => any;
+    "update:modelValue": (...args: [value: unknown]) => any;
+  },
+  SlotsType<{}>
+>;
+
+/**
+ * Schema fields as a form lays them out: one `FormField` each, its label the
+ * field's, its help beneath, and — while the field is disabled — why. A field
+ * whose `visibleWhen` does not hold is not shown. The fields render without a
+ * container of their own, so a form places them in its `.form-grid` beside
+ * its other fields.
+ *
+ * `values` is the whole form's, since conditions read other fields; an edit
+ * sets its field in that object, as `v-model` on a field of it would. Rust
+ * validates what is submitted.
+ */
+export declare const SchemaFormFields: DefineSetupFnComponent<
+  {
+    fields: readonly SchemaField[];
+    /**
+     * Host-listed options by the fields' `optionsSource`.
+     */
+    hostOptions?: Record<string, HostOptions> | undefined;
+    modelValue: Record<string, unknown>;
+  },
+  {
+    "update:modelValue": (...args: [value: Record<string, unknown>]) => any;
+  },
+  SlotsType<{}>
+>;
+
+/**
+ * A run of related `SettingsRow`s (spec §7.21): the rows stack 4 apart, under
+ * an optional Body Strong group header 8 above them. A panel's own
+ * `PanelHeader` already names a group that is the whole panel, so such a group
+ * leaves `title` out. Groups on one page sit 24 apart; that is the page's gap,
+ * since a group sets no margin of its own. The run is the shared `.card-list`
+ * (primitives.css), as each row is a `.card-row`.
+ */
+export declare const SettingsGroup: DefineSetupFnComponent<
+  {
+    title?: string | undefined;
+  },
+  {},
+  SlotsType<{
+    default?: (props: {}) => any;
+  }>
+>;
+
+/**
+ * One setting, laid out as a Windows 11 Settings row (spec §7.21): a card at
+ * least 64 tall with an optional 20px leading icon, the setting's name in Body
+ * and what it does in a secondary Caption beneath it, and the control at the
+ * trailing end. Related rows stack 4 apart inside a `SettingsGroup`.
+ *
+ * Settings' pages are built from it, and an extension's Settings section may
+ * be (the frame component bundle). Its narrow layout answers a container
+ * named `panel`, which the page it is on declares.
+ *
+ * - `controlId` names the control the row is about: the input primitives
+ *   inside it with that `id` take the title as their name and the
+ *   description as their description (`useFieldControl`). The title is text,
+ *   not a `<label>`, so clicking it does nothing: only the control's own box
+ *   opens, toggles, or focuses it (spec §8.3).
+ * - `stacked` puts the control under the text at the row's full width, for a
+ *   control that needs the room (a path, a list). Every row stacks this way
+ *   once its panel is narrower than 480.
+ * - `nested` indents the row's content by 48 under the row above it, for a
+ *   setting that only means something while its parent is on (spec §5.1).
+ * - The `title` slot replaces the title text, for a row whose name is still
+ *   being read: a `Skeleton` there keeps the row its final height.
+ *
+ * The title greys with a disabled field or switch, so the pair reads as one
+ * setting that is unavailable; the description keeps its colour, because for
+ * an unavailable setting it is where the reason goes.
+ *
+ * Presentation-only and i18n-free: callers pass translated text.
+ */
+export declare const SettingsRow: DefineSetupFnComponent<
+  {
+    title: string;
+    description?: string | undefined;
+    icon?: Component | undefined;
+    controlId?: string | undefined;
+    stacked?: boolean | undefined;
+    nested?: boolean | undefined;
+  },
+  {},
+  SlotsType<{
+    title?: (props: {}) => any;
+    description?: (props: {}) => any;
+    default?: (props: {}) => any;
+  }>
+>;
+
+/**
+ * The switch at the trailing end of a `SettingsRow`, as Windows Settings draws
+ * it: the state in words ("On", "Off") 12 before the switch. The words repeat
+ * what the switch already announces, so they are hidden from assistive
+ * technology; the row's title is the switch's name.
+ *
+ * Every other attribute — `id`, `aria-describedby`, `aria-label` — reaches the
+ * switch itself.
+ */
+export declare const SettingsSwitch: DefineSetupFnComponent<
+  {
+    modelValue: boolean;
+    disabled?: boolean | undefined;
+  },
+  {
+    "update:modelValue": (...args: [value: boolean]) => any;
+  },
+  SlotsType<{}>
+>;
+
+/**
  * A placeholder holding the place of content that has not arrived yet, at the
  * size that content will take (spec §7.17): Fluent's Skeleton — a neutral grey
  * stencil, `--fill-track`, with a lighter wave crossing it on the shared
@@ -937,6 +2277,100 @@ export declare const StatusBadge: DefineSetupFnComponent<
   SlotsType<{
     default?: (props: {}) => any;
   }>
+>;
+
+/**
+ * One control in a row of controls that is only sometimes there.
+ *
+ * Wrapping a conditional control here, instead of giving it a bare `v-if`,
+ * makes it come and go with the shared `toolbar-slot` transition in
+ * `base.css`: the row opens a gap and the control rises into it, or the control
+ * retracts upward and the row closes over the gap. The row's other controls
+ * never jump.
+ *
+ * The control shows while `when` is truthy, and the slot receives that value
+ * narrowed, so a control that reads from a nullable value names it once:
+ *
+ *   <ToolbarSlot :when="context.primaryAction" #default="{ value: action }">
+ *
+ * Attributes land on the slot element, which is the row's flex item; the row
+ * owns its layout (shrinking, ordering) through a class passed here. A row with
+ * a `gap` also declares it as `--toolbar-slot-gap`, so a closed slot gives that
+ * gap back. Nothing animates on the first render: a control that was already
+ * there when the row appeared did not arrive.
+ *
+ * A control that becomes a different control in the same place — Launch
+ * becomes Stop — names which one it is in `swapKey`: a new key is a new
+ * control, so the old one leaves its slot as the new one arrives in its own
+ * (spec §9.4, keyed by identity), rather than changing its label and width in
+ * place.
+ */
+export declare const ToolbarSlot: { <T extends unknown = unknown>(props: InstanceType<DefineSetupFnComponent<
+  {
+    when: T;
+    swapKey?: string | undefined;
+  },
+  {},
+  SlotsType<{
+    default?: (props: { value: Exclude<T, "" | 0 | false | null | undefined>; }) => any;
+  }>
+>>["$props"]): VNode; new <T extends unknown = unknown>(): InstanceType<DefineSetupFnComponent<
+  {
+    when: T;
+    swapKey?: string | undefined;
+  },
+  {},
+  SlotsType<{
+    default?: (props: { value: Exclude<T, "" | 0 | false | null | undefined>; }) => any;
+  }>
+>> };
+
+/**
+ * A list of short strings the user builds: one entry per row, added with the
+ * field under them and taken out one at a time.
+ *
+ * The settings that hold one are lists of names, not prose — the Agent plugins
+ * turned off, the engines a search pool draws on — so a textarea whose lines
+ * are the entries makes a one-line edit read as a paragraph break, hides how
+ * many entries there are, and offers no way to remove one without counting
+ * lines. The entries are the same array a textarea's lines were: the value is
+ * the strings, unchanged.
+ *
+ * Presentation only: the caller owns the array and Rust validates it. The
+ * list's own bounds, where it has them, are what stop an entry being added or
+ * a longer one being typed; a blank entry or one already in the list is not
+ * added, because neither is a new entry.
+ */
+export declare const TokenListInput: DefineSetupFnComponent<
+  {
+    modelValue: readonly string[];
+    /**
+     * The most entries the list holds; `null` is unbounded.
+     */
+    maximumItems?: number | null | undefined;
+    /**
+     * The longest entry; `null` is unbounded.
+     */
+    maximumItemChars?: number | null | undefined;
+    disabled?: boolean | undefined;
+    /**
+     * Placeholder of the field an entry is typed into.
+     */
+    placeholder?: string | undefined;
+    /**
+     * Accessible name of that field, and of the list it adds to.
+     */
+    label: string;
+    addLabel: string;
+    /**
+     * Accessible name of one entry's remove button; `{token}` is the entry.
+     */
+    removeLabel: string;
+  },
+  {
+    "update:modelValue": (...args: [value: string[]]) => any;
+  },
+  SlotsType<{}>
 >;
 
 /**
@@ -1013,8 +2447,38 @@ export declare const TooltipBubble: DefineSetupFnComponent<
   }>
 >;
 
+/**
+ * "An update is available" marker: a solid dot with two rings pulsing outward
+ * from its centre, which is what makes the marker readable in peripheral vision
+ * — a static dot of this size is easy to miss in a list of rows. The waves are
+ * spaced rather than continuous: the marker sits in a persistent surface, so a
+ * ripple that never rests reads as agitation instead of a notice.
+ *
+ * The rings are pseudo-elements taken out of flow, so the marker occupies
+ * exactly the dot's own box and animating it never reflows the row around it.
+ *
+ * Presentation only. The caller supplies the accessible treatment it needs —
+ * a `title` for the hover description, `aria-hidden` where a neighbouring label
+ * already carries the meaning — and those attributes fall through to the root.
+ */
 export declare const UpdateDot: DefineSetupFnComponent<
   {},
+  {},
+  SlotsType<{}>
+>;
+
+/**
+ * A section-header "an update is available" marker, the peer of the rail's
+ * `UpdateDot`: a warning-tone alert icon whose tooltip says what is outdated
+ * and which action applies the update. Presentation-only and i18n-free —
+ * callers pass the already-translated `text`; `label` is the accessible name
+ * for the icon button while the tooltip is the visible hover description.
+ */
+export declare const UpdateHint: DefineSetupFnComponent<
+  {
+    text: string;
+    label: string;
+  },
   {},
   SlotsType<{}>
 >;

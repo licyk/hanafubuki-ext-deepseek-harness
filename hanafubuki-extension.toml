@@ -1,7 +1,7 @@
 schema = 1
 id = "io.github.licyk.deepseek-harness"
 name = { en = "DeepSeek Harness", zh = "DeepSeek Harness" }
-version = "0.4.0"
+version = "0.5.0"
 publisher = "licyk"
 license = "MIT"
 description = { en = "Installs DeepSeek Harness (dsh) on a Node.js of its own or yours, isolated from your npm configuration and ~/.dsh, opens its web UI in Hanafubuki, and manages its npm versions.", zh = "在独立的或你自己的 Node.js 上安装 DeepSeek Harness（dsh），与你的 npm 配置和 ~/.dsh 隔离，在 Hanafubuki 中打开它的网页界面，并管理它的 npm 版本。" }
@@ -13,8 +13,12 @@ description = { en = "Installs DeepSeek Harness (dsh) on a Node.js of its own or
 # frame UI kit and the frame's `locale()`, and `[update]`; 0.3.34: the frame
 # component bundle (`__hanafubuki/vue.js`, `ui.js`, `ui-components.css`),
 # which the versions page is built on; 0.3.35: the standard `update-check`
-# operation (`provider.checkUpdate`), the application's update check.
-hanafubuki = ">=0.3.35, <0.4"
+# operation (`provider.checkUpdate`), the application's update check; 0.4:
+# that line's releases, whose management API widened (`recreateComponents`
+# in `provider.installPlan`, `components` in `provider.checkUpdate`, the
+# operation form's `values` in `provider.manage`, and the frame's
+# `updateInstance(values, mode)` and `getSettings`/`patchSettings`).
+hanafubuki = ">=0.4, <0.5"
 api = 1
 
 # Each release publishes `latest.json` beside its package (scripts/package.py).

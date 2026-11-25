@@ -11,9 +11,13 @@ preview = "images/preview.png"
 # may be a Node.js of the user's (the Paths panel's "use an existing one"):
 # its program is `bin/node` (`node.exe` on Windows), npm beside it, and no
 # plan downloads into it.
+#
+# `nodeVersion` is an install parameter, so the maintenance panel's install
+# form is where the Node.js version changes (with `core` to rebuild it now);
+# the versions page only reports which Node.js runs.
 components = [
   { name = "core", label = { key = "ext.io.github.licyk.deepseek-harness.components.core" } },
-  { name = "node", label = { key = "ext.io.github.licyk.deepseek-harness.components.node" }, external = "allowed", executable = { unix = "bin/node", windows = "node.exe" } },
+  { name = "node", label = { key = "ext.io.github.licyk.deepseek-harness.components.node" }, external = "allowed", executable = { unix = "bin/node", windows = "node.exe" }, rebuildable = true },
 ]
 runtime = { kind = "none" }
 
@@ -65,6 +69,8 @@ advanced = true
 # `update-check`: the application's update check (daily, and the card's
 # button) asks the backend (`provider.checkUpdate`).
 # `copy-user-home`: copies `~/.dsh` and `~/.agents` into the instance's homes.
+# Every operation is the maintenance panel's and the versions page's; none of
+# them changes the Node.js version, which the install form's `nodeVersion` is.
 operations = ["update", "terminal", "update-check", "copy-user-home"]
 
 [[servers]]

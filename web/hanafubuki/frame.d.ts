@@ -66,6 +66,21 @@ export function on<T = unknown>(event: string, listener: (payload: T) => void): 
  */
 export function state<T = unknown>(): Promise<T>;
 
+/** The extension's current stored setting overrides, validated by the host. */
+export interface SettingsResult {
+  values: Record<string, unknown>;
+}
+
+/** Reads this frame owner's settings; works without an extension backend. */
+export function getSettings(): Promise<SettingsResult>;
+
+/**
+ * Patches this frame owner's declared settings through the host's validation
+ * and persistence. A null value removes that override. Returns all stored
+ * values after the write; works without an extension backend.
+ */
+export function patchSettings(patch: Record<string, unknown>): Promise<SettingsResult>;
+
 /**
  * Listens to each state the extension's UI pushes (`ui.emit`, the last of
  * those within 100 ms); returns how to stop listening. A push is the whole
@@ -84,16 +99,19 @@ export function onState<T = unknown>(listener: (state: T) => void): () => void;
 export function pickDirectory(options?: { title?: string }): Promise<string | null>;
 
 /**
- * Asks to update the frame's instance with `values` (at most 64) replacing
- * those keys of its install values: the host asks the user to confirm, then
- * starts the reinstall with the merged values, which the application
- * validates against the type's install form. Resolves once it has started;
+ * Updates or reinstalls the frame's instance after confirmation, with up
+ * to 64 install values replacing the recorded ones. When mode is omitted,
+ * a ready type with update steps is updated; other types reinstall in
+ * place. Rust validates the merged values. Resolves once it has started;
  * its progress is the instance's install progress. Rejects with a
  * {@link FrameError} of kind `invalid` outside an instance's management
  * section, and `failed` when the user declines, another update is waiting
  * for an answer, or the application refuses it.
  */
-export function updateInstance(values: Record<string, unknown>): Promise<void>;
+export function updateInstance(
+  values: Record<string, unknown>,
+  mode?: "update" | "reinstall",
+): Promise<void>;
 
 /**
  * Takes the user to an instance's page (`/instances/<instanceId>`), as a
@@ -101,3 +119,9 @@ export function updateInstance(values: Record<string, unknown>): Promise<void>;
  * on its way there, which may close the frame.
  */
 export function navigateInstance(instanceId: string): Promise<void>;
+
+/** Opens a currently registered settings section. Unknown sections reject with FrameError. */
+export function openSettings(section: string): Promise<void>;
+
+/** Opens an HTTP(S) URL in the system browser. Rust validates it; invalid URLs or opener failures reject. */
+export function openExternal(url: string): Promise<void>;

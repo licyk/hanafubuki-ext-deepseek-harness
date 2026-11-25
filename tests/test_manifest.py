@@ -50,7 +50,7 @@ class ManifestTest(unittest.TestCase):
     def test_manifest(self) -> None:
         document = manifest()
         self.assertEqual(document["id"], EXTENSION_ID)
-        self.assertEqual(document["engines"], {"hanafubuki": ">=0.3.35, <0.4", "api": 1})
+        self.assertEqual(document["engines"], {"hanafubuki": ">=0.4, <0.5", "api": 1})
         self.assertEqual(
             document["update"],
             {"url": "https://github.com/licyk/hanafubuki-ext-deepseek-harness/releases/latest/download/latest.json"},
@@ -231,8 +231,15 @@ class StringsTest(unittest.TestCase):
 
     def test_frame_keys_cover_the_page(self) -> None:
         source = (ROOT / "web" / "src" / "App.vue").read_text(encoding="utf-8")
-        used = set(re.findall(r"""\bt\(\s*["']([A-Za-z]+)["']""", source))
-        self.assertEqual(used - {key.removeprefix("frame.") for key in locale("en") if key.startswith("frame.")}, set())
+        # Both shapes the page asks with: a literal key, and `component_${name}`
+        # for each component an update check reports.
+        used = set(re.findall(r"""\bt\(\s*["']([A-Za-z_]+)["']""", source))
+        for prefix in re.findall(r"""\bt\(`([A-Za-z_]+)\$\{""", source):
+            used.update(f"{prefix}{name}" for name in ("core", "node"))
+        for name in ("en", "zh"):
+            defined = {key.removeprefix("frame.") for key in locale(name) if key.startswith("frame.")}
+            with self.subTest(locale=name):
+                self.assertEqual(used - defined, set())
 
 
 class LayoutTest(unittest.TestCase):

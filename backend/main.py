@@ -15,6 +15,7 @@ import json
 import os
 import subprocess
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -67,7 +68,13 @@ class Backend(Handler):
         return found
 
     def install_plan(
-        self, host: Host, type_id: str, kind: str, values: dict[str, Any], instance: dict[str, Any]
+        self,
+        host: Host,
+        type_id: str,
+        kind: str,
+        values: dict[str, Any],
+        instance: dict[str, Any],
+        recreate_components: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """``provider.installPlan``: Node.js (unless an update keeps it, or it is the user's), npm, the marker.
 
@@ -75,9 +82,14 @@ class Backend(Handler):
         ``attachOnly``): every plan, an ``install`` included (the host's
         retry of an update that failed), is the prefix's own npm alone. An
         external ``node`` is never downloaded into.
+
+        ``recreateComponents`` is what the user asked a reinstall to rebuild:
+        the host empties those before it runs these steps, so ``node`` named
+        there is downloaded again whatever the instance holds.
         """
         platform = self._platform_of(host)
         parts = _components(instance)
+        recreated = recreate_components if isinstance(recreate_components, list) else []
         if type_id == GLOBAL_TYPE_ID:
             return plans.global_install_steps(layout.global_prefix(platform), values)
         shape = self._own_layout(host, parts, platform)
@@ -92,13 +104,13 @@ class Backend(Handler):
         try:
             release = self._node_release(host, spec.node_version(values), platform)
         except RpcError as error:
-            # Offline, an update keeps the Node.js the same request got before.
+            # Offline, a plan keeps the Node.js the same request got before.
             unchanged = marker is not None and marker.node_version == spec.node_version(values)
-            if kind != "update" or not unchanged or not program.is_file():
+            if not unchanged or not program.is_file() or "node" in recreated:
                 raise
             host.log("warn", f"keeping Node.js {marker.node}: {error.message}")
             return plans.install_steps(shape, values, None, marker.node, registry)
-        if plans.keeps_node(kind, marker, release.version, program):
+        if plans.keeps_node(marker, release.version, program, recreated):
             return plans.install_steps(shape, values, None, release.version, registry)
         return plans.install_steps(shape, values, release, release.version, registry)
 
@@ -113,8 +125,19 @@ class Backend(Handler):
             return plans.launch_command(layout.global_prefix(platform))
         return plans.launch_command(self._own_layout(host, _components(instance), platform))
 
-    def manage(self, host: Host, type_id: str, operation: str, instance: dict[str, Any]) -> str:
-        """``provider.manage.copy-user-home``: copies the user's ``~/.dsh`` into the instance's home."""
+    def manage(
+        self,
+        host: Host,
+        type_id: str,
+        operation: str,
+        instance: dict[str, Any],
+        values: dict[str, Any] | None = None,
+    ) -> str:
+        """``provider.manage.copy-user-home``: copies the user's ``~/.dsh`` into the instance's home.
+
+        ``values`` is the operation form's (0.4 passes it, with its defaults),
+        which this operation declares none of.
+        """
         if operation != COPY_HOME or type_id != TYPE_ID:
             raise RpcError(INVALID_PARAMS, f"no operation `{operation}`")
         return self._start_copy(host, str(instance.get("id", "")))
@@ -124,26 +147,20 @@ class Backend(Handler):
     ) -> dict[str, Any]:
         """``provider.checkUpdate`` of a ``dsh`` instance: the dsh it has, and the one Update installs.
 
-        Update installs the ``version`` value: an exact version as it is, a
-        dist-tag (``latest``) as the registry names it now. The registry's
-        document is the version page's, cached for ``REGISTRY_MAX_AGE`` and
-        read from the cache when the registry does not answer.
+        A global prefix declares no `update-check` at all: its Node.js and npm
+        are the user's, and the host never asks this for it.
         """
         if type_id != TYPE_ID:
             raise RpcError(INVALID_PARAMS, f"type `{type_id}` has no update check")
-        parts = _components(instance)
-        shape = self._own_layout(host, parts, self._platform_of(host))
-        installed = _package_version(shape.path(shape.dsh_prefix, parts) / layout.PACKAGE_JSON)
-        if installed is None:
-            raise RpcError(REQUEST_FAILED, self._notice(host, "notInstalled"))
-        wanted = spec.dsh_version(values)
-        target = wanted if spec.SEMVER.match(wanted) else self._versions(host, False)["distTags"].get(wanted)
-        if not isinstance(target, str):
-            raise RpcError(REQUEST_FAILED, self._notice(host, "noDistTag").format(tag=wanted))
-        return {"current": installed, "latest": target, "hasUpdate": target != installed}
+        return self._checked(host, instance, values)
 
     def frame_call(self, host: Host, frame: str, method: str, params: Any, context: dict[str, Any]) -> Any:
-        """``ui.frame.call`` from the ``versions`` frame: ``status``, ``versions`` and ``copyHome``."""
+        """``ui.frame.call`` from the ``versions`` frame: ``status``, ``versions``, ``checkUpdate`` and ``copyHome``.
+
+        ``versions`` is the registry's catalogue; ``checkUpdate`` is the same
+        question the application's update check asks (`provider.checkUpdate`),
+        answered for the page with the components it reports.
+        """
         if frame != "versions":
             raise RpcError(INVALID_PARAMS, f"no frame `{frame}`")
         options = params if isinstance(params, dict) else {}
@@ -152,6 +169,8 @@ class Backend(Handler):
             return self._status(host, instance_id)
         if method == "versions":
             return self._versions(host, bool(options.get("refresh")))
+        if method == "checkUpdate":
+            return self._frame_update(host, instance_id, bool(options.get("refresh")))
         if method == "copyHome":
             return {"notice": self._start_copy(host, instance_id)}
         raise RpcError(INVALID_PARAMS, f"no method `{method}`")
@@ -172,6 +191,9 @@ class Backend(Handler):
             "installed": _package_version(shape.path(shape.dsh_prefix, parts) / layout.PACKAGE_JSON),
             "node": node or _node_version(program),
             "nodeSource": source,
+            # What the maintenance panel's install form offers: the source's
+            # `nodeVersion` applies there, so this page only reads it.
+            "nodeVersion": self._requested_node(host, found, marker),
             "nodePath": str(program),
             "prefix": None if isolated else str(parts.core.path),
             "homePath": str(root / home.DSH_HOME) if isolated else None,
@@ -185,7 +207,26 @@ class Backend(Handler):
             "strings": {name: locale_strings(name).get("frame", {}) for name in ("en", "zh")},
         }
 
+    def _requested_node(self, host: Host, found: dict[str, Any], marker: plans.Marker | None) -> str | None:
+        """The ``nodeVersion`` the instance's values ask for, read from the host's own configuration (0.4).
+
+        ``instances.configuration`` is the host's non-secret projection of an
+        instance's install values, which the page only displays: changing it is
+        the maintenance panel's install form. When the host answers nothing
+        (it has no such call, or no value for this field), the marker's own
+        record stands in, so the page still names a version.
+        """
+        try:
+            values = host.instance_configuration(str(found.get("id", ""))).get("values", {})
+        except RpcError:
+            return marker.node_version if marker else None
+        requested = values.get("nodeVersion")
+        if isinstance(requested, str) and requested.strip():
+            return requested.strip()
+        return marker.node_version if marker else None
+
     def _versions(self, host: Host, refresh: bool) -> dict[str, Any]:
+        """The registry's catalogue, cached for ``REGISTRY_MAX_AGE`` and re-read when the page refreshes."""
         registry = self._settings(host)["npmRegistry"] or DEFAULT_REGISTRY
         url = f"{registry.rstrip('/')}/@deepseek-ai%2Fdsh"
         document = self._remote(host).json(url, f"dsh-{_digest(url)}.json", 0.0 if refresh else REGISTRY_MAX_AGE)
@@ -197,6 +238,74 @@ class Backend(Handler):
             "distTags": document.get("dist-tags", {}),
             "versions": [{"version": version, "published": published.get(version)} for version in versions],
         }
+
+    def _checked(self, host: Host, found: dict[str, Any], values: dict[str, Any]) -> dict[str, Any]:
+        """What an update would change for this instance: dsh, and the Node.js the extension downloads.
+
+        Update installs the ``version`` value: an exact version as it is, a
+        dist-tag (``latest``) as the registry names it now. The components
+        the extension manages are reported beside dsh (0.4's ``components``),
+        so the maintenance panel shows dsh and Node.js each as they stand; a
+        component update alone marks the instance updatable.
+        """
+        parts = _components(found)
+        platform = self._platform_of(host)
+        shape = self._own_layout(host, parts, platform)
+        installed = _package_version(shape.path(shape.dsh_prefix, parts) / layout.PACKAGE_JSON)
+        if installed is None:
+            raise RpcError(REQUEST_FAILED, self._notice(host, "notInstalled"))
+        wanted = spec.dsh_version(values)
+        target = wanted if spec.SEMVER.match(wanted) else self._versions(host, False)["distTags"].get(wanted)
+        if not isinstance(target, str):
+            raise RpcError(REQUEST_FAILED, self._notice(host, "noDistTag").format(tag=wanted))
+        report: dict[str, Any] = {"current": installed, "latest": target, "hasUpdate": target != installed}
+        if parts.node.external:
+            return report
+        marker = plans.read_marker(parts.core.path)
+        node = marker.node if marker and marker.node else _node_version(shape.path(shape.node, parts))
+        # An update of `24` reaches a newer 24.x once the index lists one;
+        # offline, what the instance holds is the answer.
+        try:
+            newest = self._node_release(host, spec.node_version(values), platform).version
+        except RpcError:
+            newest = node
+        node_update = bool(node and newest and newest != node)
+        report["components"] = [
+            {"name": "core", "current": installed, "latest": target, "hasUpdate": target != installed},
+            {"name": "node", "current": node, "latest": newest, "hasUpdate": node_update},
+        ]
+        if node_update:
+            report["hasUpdate"] = True
+        return report
+
+    def _frame_update(self, host: Host, instance_id: str, refresh: bool) -> dict[str, Any]:
+        """The version page's ``checkUpdate``: the update check's answer, with its time and the values it used.
+
+        The page asks with nothing but the refresh flag, so the instance is
+        read from the host and its recorded values through
+        ``instances.configuration``. A host that cannot answer that (no such
+        call) is checked against the value the page would update with, which
+        is what ``latest`` names.
+        """
+        found = self._instance(host, instance_id)
+        values: dict[str, Any] = {}
+        try:
+            values = dict(host.instance_configuration(instance_id).get("values", {}))
+        except RpcError:
+            pass
+        if refresh:
+            # The registry's own document is re-read, so a version published
+            # since the last answer is seen without waiting for its cache.
+            self._versions(host, True)
+        report = self._checked(host, found, values)
+        report["checkedAt"] = _now()
+        report["requested"] = {
+            "version": spec.dsh_version(values),
+            "nodeVersion": spec.node_version(values),
+        }
+        report["updatable"] = bool(report["hasUpdate"]) and not bool(found.get("running"))
+        report["running"] = bool(found.get("running"))
+        return report
 
     def _start_copy(self, host: Host, instance_id: str) -> str:
         # A home can hold many sessions: the copy runs on a thread of its own,
@@ -376,6 +485,11 @@ def _node_version(program: Path) -> str | None:
 
 def _digest(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
+
+
+def _now() -> str:
+    """The current time, as the page reads it: ISO 8601 in UTC to the second."""
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
 if __name__ == "__main__":

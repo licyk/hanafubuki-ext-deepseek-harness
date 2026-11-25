@@ -47,13 +47,19 @@ def read_marker(core: Path) -> Marker | None:
     return Marker(fields.get("version", ""), fields.get("nodeVersion", ""), fields.get("node", ""))
 
 
-def keeps_node(kind: str, marker: Marker | None, release: str, node_program: Path) -> bool:
-    """Whether an update keeps the instance's Node.js: it is the release ``nodeVersion`` resolves to now.
+def keeps_node(marker: Marker | None, release: str, node_program: Path, recreated: list[str]) -> bool:
+    """Whether a plan leaves the instance's Node.js as it is.
 
-    The marker records the exact release an install got, so an update of
-    ``24`` downloads a newer 24.x once the index lists one.
+    It does when the instance already holds exactly this release (the marker
+    records what an install got, so an update of ``24`` still downloads a
+    newer 24.x once the index lists one) and the user did not ask a reinstall
+    to rebuild ``node``: the host empties a component named in
+    ``recreateComponents`` before it runs the steps, so nothing would be left
+    to keep.
     """
-    return kind == "update" and marker is not None and marker.node == release and node_program.is_file()
+    if "node" in recreated or not node_program.is_file():
+        return False
+    return marker is not None and marker.node == release
 
 
 def install_steps(

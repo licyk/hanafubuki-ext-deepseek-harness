@@ -1,79 +1,8 @@
-/* The application's UI kit (`__hanafubuki/ui.css`) and its components
-   (`__hanafubuki/ui-components.css`), both linked by index.html, draw the
-   controls, the type and the colours; this is the page's layout. */
+/* The page's own layout lives in `App.vue`'s scoped styles; the controls, the
+   type and the colours come from the application's UI kit (`__hanafubuki/ui.css`)
+   and its components (`__hanafubuki/ui-components.css`), both linked by
+   `index.html` and served beside the frame client. All this needs is a body
+   with no margin of its own, so the page's padding is the frame's. */
 body {
   margin: 0;
-}
-
-.page {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  padding: var(--space-3);
-}
-
-.summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-4) var(--space-6);
-  align-items: flex-end;
-}
-
-.fact {
-  display: flex;
-  flex-direction: column;
-}
-
-.label {
-  color: var(--text-secondary);
-  font: var(--type-caption);
-}
-
-.value {
-  font-weight: var(--weight-semibold);
-}
-
-.refresh {
-  margin-left: auto;
-}
-
-h2 {
-  font: var(--type-subtitle);
-}
-
-.block {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.heading {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-/* A long list: the kit's card rows at one line each. */
-.compact > .card-row {
-  min-height: 48px;
-  padding-block: var(--space-2);
-}
-
-.hint {
-  color: var(--text-secondary);
-}
-
-.node-version {
-  width: 12em;
-}
-
-.inline {
-  display: flex;
-  gap: var(--space-2);
-  align-items: center;
-}
-
-.show-all {
-  align-self: flex-start;
 }
