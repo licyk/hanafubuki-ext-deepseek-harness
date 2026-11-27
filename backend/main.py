@@ -34,6 +34,11 @@ from remote import Remote
 TYPE_ID = "io.github.licyk.deepseek-harness:dsh"
 GLOBAL_TYPE_ID = f"io.github.licyk.deepseek-harness:{layout.GLOBAL_TYPE}"
 PACKAGE_ROOT = Path(__file__).resolve().parent.parent
+# A frame has the application's ``common`` messages only (docs/extension-
+# protocol.md, Frames: `UiStringKey`), so this page words its own labels. The
+# one it does not send is ``loading``: `LoadingState` and `LoadMoreSentinel`
+# are the components' and say it themselves.
+HOST_STRINGS = frozenset({"loading"})
 DEFAULT_REGISTRY = "https://registry.npmjs.org"
 INDEX_MAX_AGE = 3600.0
 REGISTRY_MAX_AGE = 600.0
@@ -217,7 +222,7 @@ class Backend(Handler):
                 "nodeVersion": marker.node_version if marker else None,
             },
             "locale": self._locale(host),
-            "strings": {name: locale_strings(name).get("frame", {}) for name in ("en", "zh")},
+            "strings": {name: page_strings(name) for name in ("en", "zh")},
         }
 
     def _requested_node(self, host: Host, found: dict[str, Any], marker: plans.Marker | None) -> str | None:
@@ -466,6 +471,17 @@ def locale_strings(locale: str) -> dict[str, Any]:
         return json.loads((PACKAGE_ROOT / "locales" / f"{locale}.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
+
+
+def page_strings(locale: str) -> dict[str, str]:
+    """What the page draws: its ``frame`` strings, without the ones the host's own components say.
+
+    A label the application already words — Installed, Switch, Latest, the
+    refresh button — comes from the host through the component bundle, so
+    sending it again would let the two disagree.
+    """
+    frame = locale_strings(locale).get("frame", {})
+    return {name: text for name, text in frame.items() if name not in HOST_STRINGS}
 
 
 def _package_version(path: Path) -> str | None:

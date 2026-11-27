@@ -10,6 +10,7 @@ checked to be declared, which needs no checkout at all.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import unittest
@@ -18,6 +19,9 @@ from pathlib import Path
 from tests.support import ROOT
 
 VENDORED = ROOT / "web" / "hanafubuki"
+WEB_SRC = ROOT / "web" / "src"
+# What the page asks the backend's strings for, as `page.t("key")`.
+PAGE_KEY = re.compile(r'\bpage\.t\(\s*"([A-Za-z0-9_]+)"')
 # The host's own copies, by the name the page builds against.
 UPSTREAM = {
     "frame.d.ts": Path("sdk") / "frame" / "frame.d.ts",
@@ -69,6 +73,31 @@ class FrameClientTest(unittest.TestCase):
         used = {name.strip() for name in block.group(1).split(",") if name.strip()}
         exported = set(re.findall(r"^export declare (?:const|function) ([A-Za-z_]+)", self.source("ui.d.ts"), re.M))
         self.assertEqual(used - exported, set())
+
+
+class PageStringsTest(unittest.TestCase):
+    """The page's own strings: the keys its views ask for, in both locales."""
+
+    def asked(self) -> set[str]:
+        found: set[str] = set()
+        for path in WEB_SRC.rglob("*"):
+            if path.suffix in (".vue", ".ts"):
+                found |= set(PAGE_KEY.findall(path.read_text(encoding="utf-8")))
+        return found
+
+    def test_every_key_the_page_asks_for_is_in_both_locales(self) -> None:
+        asked = self.asked()
+        self.assertTrue(asked, "the page asks for no string")
+        for name in ("en", "zh"):
+            frame = json.loads((ROOT / "locales" / f"{name}.json").read_text(encoding="utf-8"))["frame"]
+            with self.subTest(locale=name):
+                self.assertEqual(asked - set(frame), set())
+
+    def test_the_locales_carry_the_same_keys(self) -> None:
+        tables = {
+            name: json.loads((ROOT / "locales" / f"{name}.json").read_text(encoding="utf-8")) for name in ("en", "zh")
+        }
+        self.assertEqual(set(tables["en"]["frame"]), set(tables["zh"]["frame"]))
 
 
 if __name__ == "__main__":

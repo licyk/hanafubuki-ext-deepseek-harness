@@ -411,7 +411,11 @@ class BackendProtocolTest(unittest.TestCase):
         self.assertEqual(status["homePath"], str(self.root / "dsh-home"))
         self.assertFalse(status["canCopyHome"])  # there is no ~/.dsh
         self.assertEqual(status["locale"], "zh")
+        self.assertEqual(status["strings"]["zh"]["versions"], "dsh")
+        # A frame has the application's `common` messages only, so the page
+        # words its own labels; the one it does not send is the components'.
         self.assertEqual(status["strings"]["zh"]["switch"], "切换")
+        self.assertNotIn("loading", status["strings"]["zh"])
         self.assertEqual(set(status["strings"]["en"]), set(status["strings"]["zh"]))
         params = {"frame": "versions", "method": "status", "params": None, "context": {"instanceId": "other"}}
         self.assertEqual(self.host.request("ui.frame.call", params)["error"]["code"], -32003)

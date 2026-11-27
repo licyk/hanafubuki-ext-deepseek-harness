@@ -62,13 +62,19 @@ The rest of this section, and [Isolation](#isolation), are about `dsh`.
 - **Terminal**: the instance's terminal opens in `core` with the instance's
   `dsh`, `npm` and `node` first on `PATH` ([Isolation](#isolation)).
 - **Versions page**: the instance's management has a *DeepSeek Harness
-  versions* section, laid out as the application's own version panel is: the
-  installed dsh and the Node.js in use (the managed one, "your own (vX)", or
-  "uses the system's Node.js and dsh (`<prefix>`)"), **Check for updates**
-  with its verdict, the dsh and Node.js versions it compared, and when it
-  answered; then one row per npm version with **Switch** (which asks
-  Hanafubuki to update the instance with that version, after a confirmation);
-  then the dist-tags, dsh's home and, once, **Copy from ~/.dsh**. The Node.js
+  versions* section of three tabs — **dsh**, **Node.js** and
+  **Configuration** — chosen by the application's own tab strip, with the
+  section's one **Refresh** at the header's trailing end. The dsh tab is laid
+  out as the application's own version panel is: the current and latest
+  version and how many the registry lists; **Check for updates** with its
+  verdict, the Node.js it compared, and when it answered; then one row per
+  npm version with **Switch** (which asks Hanafubuki to update the instance
+  with that version, after a confirmation); then the dist-tags. The Node.js
+  tab reports which Node.js runs (the managed one, "your own (vX)", or "uses
+  the system's Node.js and dsh (`<prefix>`)"), the version its install values
+  ask for, where it is, and whether an update would move it. The
+  configuration tab reports dsh's home and the registry, and offers **Copy
+  from ~/.dsh**. The page
   version is changed in **Maintenance** instead, where it is one of the
   install parameters. Every control is Hanafubuki's own Vue component or a
   class of its UI kit, which the application serves to frames, so the page
@@ -325,6 +331,9 @@ What is not discovered:
 | `backend/` | The Python backend: `main.py` (the handler), `spec.py` (the parameters), `node_release.py` (the Node.js release), `layout.py` (the components and the layouts), `plans.py` (the steps and the command), `home.py` (dsh's homes and the copy), `copied.py` (which instances it was copied into), `remote.py` (fetching and caching). |
 | `launcher/` | What the host runs: `launch.py`, `start-dsh.mjs`, `intercept.mjs`, `open-stub.mjs`. |
 | `ui/versions/` | The built versions page (committed). |
+| `web/src/views/` | Its three tabs: `VersionsView` (dsh), `NodeView`, `ConfigurationView`. |
+| `web/src/components/` | What they are built from: `VersionRowList` (the ruled version list), `FactGrid` (the labelled facts), `UpdateBand` (the check's verdict), `SectionShell` (a section's heading and actions). |
+| `web/src/composables/useVersionPage.ts` | The page's one store: what the backend answered, what is in flight, and the three things it can be asked to do. |
 | `web/` | Its Vue 3 + Vite source; not part of the package. |
 | `locales/`, `schemas/`, `images/` | Strings (en, zh), the Settings form, the type's preview. |
 | `tests/` | The tests; `scripts/package.py` builds the archive. |
@@ -471,8 +480,12 @@ npm 配置和 `~/.dsh`。
   `dsh-global` 实例的 dsh 数据在 `~/.dsh`，删除实例不会删除它。
 - 设置：可配置 npm 源（如 `https://registry.npmmirror.com`）和 Node.js 下载镜像
   （如 `https://cdn.npmmirror.com/binaries/node`）。
-- 版本页面：按应用自身「版本」面板的样式组织——先是一行已安装事实，再是每个已发布
-  版本一行的版本列表（当前版本在行内标出，其余行各带「切换」），最后是 dsh 主目录。
+- 版本页面：分 **dsh**、**Node.js**、**配置** 三个分页，由应用自己的分页控件切换，
+  「刷新」在页头末尾。dsh 页按应用自身「版本」面板的样式组织——先是当前版本、最新版本
+  与可用版本数，再是「检查更新」及其结论、所比较的 Node.js 和检查时间，然后是每个已发布
+  版本一行的版本列表（当前版本在行内标出，其余行各带「切换」），最后是发布标签。Node.js
+  页报告正在运行的 Node.js、安装值请求的版本、其位置，以及更新是否会移动它。配置页报告
+  dsh 主目录与源，并提供「从 ~/.dsh 复制」。
   它使用 Hanafubuki 提供给框架的 Vue 组件包（`__hanafubuki/ui.js`，与
   `__hanafubuki/vue.js` 共用一个 Vue 运行时）中的信息栏、开关、刷新按钮、状态徽章、
   空状态、加载状态、更新提示和进度条，以及界面套件（`__hanafubuki/ui.css`）的样式，
