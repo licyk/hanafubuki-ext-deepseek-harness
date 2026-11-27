@@ -10,6 +10,7 @@ It plans both types' ``web`` server and answers the version page's calls.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -289,10 +290,8 @@ class Backend(Handler):
         """
         found = self._instance(host, instance_id)
         values: dict[str, Any] = {}
-        try:
+        with contextlib.suppress(RpcError):
             values = dict(host.instance_configuration(instance_id).get("values", {}))
-        except RpcError:
-            pass
         if refresh:
             # The registry's own document is re-read, so a version published
             # since the last answer is seen without waiting for its cache.

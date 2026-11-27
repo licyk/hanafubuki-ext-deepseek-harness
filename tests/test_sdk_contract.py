@@ -67,9 +67,7 @@ class FrameClientTest(unittest.TestCase):
         block = re.search(r"import \{([^}]+)\} from \"hanafubuki-ui\";", page)
         self.assertIsNotNone(block)
         used = {name.strip() for name in block.group(1).split(",") if name.strip()}
-        exported = set(
-            re.findall(r"^export declare (?:const|function) ([A-Za-z_]+)", self.source("ui.d.ts"), re.M)
-        )
+        exported = set(re.findall(r"^export declare (?:const|function) ([A-Za-z_]+)", self.source("ui.d.ts"), re.M))
         self.assertEqual(used - exported, set())
 
 

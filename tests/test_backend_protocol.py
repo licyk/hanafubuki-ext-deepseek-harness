@@ -514,9 +514,7 @@ class BackendProtocolTest(unittest.TestCase):
 
     def test_the_update_check_reports_node_beside_dsh(self) -> None:
         self.install_dsh("0.3.0")
-        (self.root / "core" / "hanafubuki-install.txt").write_text(
-            "version=latest\nnodeVersion=24\nnode=24.22.3\n"
-        )
+        (self.root / "core" / "hanafubuki-install.txt").write_text("version=latest\nnodeVersion=24\nnode=24.22.3\n")
         self.assertEqual(
             self.check({})["result"]["components"],
             [
@@ -535,9 +533,7 @@ class BackendProtocolTest(unittest.TestCase):
         self.install_dsh("0.2.2")
         mine = self.directory / "my-node"
         sent = instance(self.root / "core", mine, node_external=True)
-        found = self.host.request(
-            "provider.checkUpdate", {"type": TYPE_ID, "values": {}, "instance": sent}
-        )["result"]
+        found = self.host.request("provider.checkUpdate", {"type": TYPE_ID, "values": {}, "instance": sent})["result"]
         self.assertNotIn("components", found)
 
     def test_the_update_check_reads_the_cache_offline_and_says_what_it_lacks(self) -> None:
