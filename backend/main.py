@@ -116,9 +116,21 @@ class Backend(Handler):
         return plans.install_steps(shape, values, release, release.version, registry)
 
     def launch_plan(
-        self, host: Host, type_id: str, role: str, port: int, values: dict[str, Any], instance: dict[str, Any]
+        self,
+        host: Host,
+        type_id: str,
+        role: str,
+        port: int,
+        values: dict[str, Any],
+        instance: dict[str, Any],
+        *,
+        launch_values: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """``provider.launchPlan``: the launcher on the managed Python for the ``web`` role."""
+        """``provider.launchPlan``: the launcher on the managed Python for the ``web`` role.
+
+        ``launch_values`` is the host's, sent since 0.4 with this instance's
+        launch form; neither type declares one, so no command here reads it.
+        """
         if role != "web":
             raise RpcError(INVALID_PARAMS, f"no server role `{role}`")
         platform = self._platform_of(host)

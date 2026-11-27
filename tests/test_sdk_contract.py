@@ -65,7 +65,7 @@ class FrameClientTest(unittest.TestCase):
     def test_the_components_and_helpers_the_page_uses_are_exported(self) -> None:
         page = (ROOT / "web" / "src" / "App.vue").read_text(encoding="utf-8")
         block = re.search(r"import \{([^}]+)\} from \"hanafubuki-ui\";", page)
-        self.assertIsNotNone(block)
+        assert block is not None, "the page imports hanafubuki-ui"
         used = {name.strip() for name in block.group(1).split(",") if name.strip()}
         exported = set(re.findall(r"^export declare (?:const|function) ([A-Za-z_]+)", self.source("ui.d.ts"), re.M))
         self.assertEqual(used - exported, set())
