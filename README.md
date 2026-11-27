@@ -390,7 +390,7 @@ a package, and the page must build from this repository alone):
 `web/hanafubuki/ui.d.ts` is `sdk/ui/ui.d.ts` (generated there by `bun run
 export:frontend-interfaces`); `tsconfig.json` maps `hanafubuki-frame` and
 `hanafubuki-ui` to them. Refresh them from a Hanafubuki checkout when the
-client or the bundle changes (they are 0.4.12's, the newest of the 0.4
+client or the bundle changes (they are 0.4.13's, the newest of the 0.4
 line this extension supports; `tests/test_sdk_contract.py` compares them
 with a checkout at `../Hanafubuki-dev` or `HANAFUBUKI_CHECKOUT`, and checks
 that every frame-client function and UI component the page uses is
@@ -494,7 +494,7 @@ npm 配置和 `~/.dsh`。
 - 开发：`web/` 中执行 `npm ci && npm run build` 构建版本页面；以开发链接安装时，
   文件夹内不能有符号链接（`web/.npmrc` 已设置 `bin-links=false`）。
   `web/hanafubuki/frame.d.ts` 与 `web/hanafubuki/ui.d.ts` 分别是 Hanafubuki
-  `sdk/frame/frame.d.ts` 与 `sdk/ui/ui.d.ts` 的原样副本（当前为 0.4.12，即所支持
+  `sdk/frame/frame.d.ts` 与 `sdk/ui/ui.d.ts` 的原样副本（当前为 0.4.13，即所支持
   0.4 系列的最新版；`tests/test_sdk_contract.py` 会与 `../Hanafubuki-dev` 或
   `HANAFUBUKI_CHECKOUT` 指定的检出逐字节比对，并检查页面用到的每个帧客户端函数与
   界面组件都已在声明中导出）；构建时 `vue`、组件包和框架客户端都不打包，而是引用
