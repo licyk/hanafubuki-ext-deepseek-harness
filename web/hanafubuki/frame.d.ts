@@ -125,3 +125,47 @@ export function openSettings(section: string): Promise<void>;
 
 /** Opens an HTTP(S) URL in the system browser. Rust validates it; invalid URLs or opener failures reject. */
 export function openExternal(url: string): Promise<void>;
+
+/**
+ * Opens one of this extension's `dialogs` frames (`kind = "frame"`,
+ * `slot = "dialogs"`) in a dialog over the window, titled `title` or by the
+ * frame's own title. Resolves with what that page's {@link closeDialog}
+ * gave, or `null` when the user dismissed it. Rejects `invalid` for a frame
+ * that is not one of the extension's `dialogs` frames, and `failed` while
+ * another dialog is open.
+ */
+export function openDialog<T = unknown>(
+  frame: string,
+  options?: { title?: string },
+): Promise<T | null>;
+
+/**
+ * From a `dialogs` frame: closes its dialog, resolving the opener's
+ * {@link openDialog} with `result` (any JSON under 64 KiB). Ignored in any
+ * other frame.
+ */
+export function closeDialog(result?: unknown): void;
+
+/**
+ * From a frame in the install wizard (`[[install.frames]]` of an instance
+ * type): merges `values` into the install form's draft as if the user
+ * typed them, so the wizard's own validation and Rust's apply; keys the
+ * type's install form does not declare are dropped, at most 64 kept.
+ * Resolves once merged; rejects `invalid` elsewhere.
+ */
+export function setInstallValues(values: Record<string, unknown>): Promise<void>;
+
+/**
+ * Brings one of this extension's Task Center tabs (`taskCenter.tabs`) forward
+ * by the panel's or frame's own id, opening the Task Center if it is closed.
+ * Resolves once it is selected; rejects `invalid` for a tab the application
+ * does not list for this extension.
+ */
+export function openTaskCenterTab(tab: string): Promise<void>;
+
+/**
+ * From a Task Center tab's frame: called each time that tab becomes the shown
+ * one, `tab` its own id, so the page refreshes what it shows without
+ * polling; returns how to stop listening.
+ */
+export function onTaskCenterTabShown(listener: (tab: string) => void): () => void;
