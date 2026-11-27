@@ -42,4 +42,6 @@ settings = "schemas/settings.json"
 locales = "locales/{locale}.json"
 ui = [
   { slot = "management.sections", kind = "frame", entry = "ui/versions/index.html", id = "versions", title = { en = "DeepSeek Harness versions", zh = "DeepSeek Harness 版本" } },
+  { slot = "management.sections", kind = "frame", entry = "ui/node/index.html", id = "node", title = { en = "Node.js", zh = "Node.js" } },
+  { slot = "management.sections", kind = "frame", entry = "ui/configuration/index.html", id = "configuration", title = { en = "DeepSeek Harness configuration", zh = "DeepSeek Harness 配置" } },
 ]

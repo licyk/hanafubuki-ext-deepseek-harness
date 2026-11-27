@@ -9,7 +9,7 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": [],
+    "types": ["node"],
     "paths": {
       "hanafubuki-frame": ["./hanafubuki/frame.d.ts"],
       "hanafubuki-ui": ["./hanafubuki/ui.d.ts"]

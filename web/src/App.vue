@@ -1,32 +1,18 @@
 <script setup lang="ts">
-// The instance's frame: one page of three sections — dsh versions, Node.js,
-// and the instance's configuration — chosen by the application's tab strip.
-// Everything comes from the backend through the frame client (`status`,
-// `versions`, `checkUpdate`, `copyHome`); the page has no network of its own.
-//
-// The shape follows the application's own instance management: a header with
-// the section's one refresh at the trailing end, an info bar for what an
-// action reported, and sections whose facts and lists use the UI kit's
-// metrics. The views own their content; this file owns the page.
+// One management section of the instance: dsh's versions, the Node.js it
+// runs, or its configuration. It is the page's whole frame — the host lists
+// the three in the instance's rail and opens one at a time — so this file is
+// what each of them wears: the section's one refresh at the header's
+// trailing end, and an info bar for what an action reported. Everything else
+// comes from the backend through the frame client (`status`, `versions`,
+// `checkUpdate`, `copyHome`); no page has a network of its own.
 import { computed, onMounted, ref, watch } from "vue";
 import * as client from "hanafubuki-frame";
-import { BaseTabs, InfoBar, RefreshButton } from "hanafubuki-ui";
+import { InfoBar, RefreshButton } from "hanafubuki-ui";
 
-import ConfigurationView from "./views/ConfigurationView.vue";
-import NodeView from "./views/NodeView.vue";
-import VersionsView from "./views/VersionsView.vue";
 import { useVersionPage } from "./composables/useVersionPage";
 
 const page = useVersionPage();
-
-const view = ref("versions");
-const showPrereleases = ref(true);
-
-const tabs = computed(() => [
-  { value: "versions", label: page.t("versions") },
-  { value: "node", label: page.t("nodeTab") },
-  { value: "configuration", label: page.t("configurationTab") },
-]);
 
 /** The bar's text and severity, kept while it collapses so it leaves with what it showed. */
 const bar = ref<{ text: string; severity: "info" | "error" }>({ text: "", severity: "info" });
@@ -58,9 +44,7 @@ onMounted(() => {
 <template>
   <main class="page">
     <header class="page__head">
-      <div class="page__tabs">
-        <BaseTabs v-model="view" :items="tabs" :label="page.t('tabs')" />
-      </div>
+      <span class="page__spacer" aria-hidden="true" />
       <RefreshButton
         :label="page.t('refresh')"
         :busy="page.refreshing.value"
@@ -76,15 +60,13 @@ onMounted(() => {
       @dismiss="page.message.value = ''"
     />
 
-    <VersionsView v-if="view === 'versions'" v-model:show-prereleases="showPrereleases" />
-    <NodeView v-else-if="view === 'node'" />
-    <ConfigurationView v-else />
+    <slot />
   </main>
 </template>
 
 <style scoped>
-/* One column of groups, 12 apart (the application's section spacing), with the
-   section's one refresh at the trailing end of the header. */
+/* One column of sections, 12 apart (the application's section spacing), with
+   the section's one refresh at the trailing end of the header. */
 .page {
   display: flex;
   flex-direction: column;
@@ -100,9 +82,11 @@ onMounted(() => {
   flex-wrap: wrap;
 }
 
-/* The tabs take the row's width so the refresh sits at its trailing end, as
-   the application's panel header puts its actions (spec §7.21). */
-.page__tabs {
+/* The refresh sits at the trailing end, the place the application's panel
+   header puts a section's actions (spec §7.21). The section's own name is the
+   host's — the rail entry and the panel header — so the page does not repeat
+   it; the spacer keeps the button where that header would. */
+.page__spacer {
   flex: 1 1 auto;
   min-width: 0;
 }
